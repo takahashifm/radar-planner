@@ -2099,7 +2099,7 @@ async function fetchGFW() {
 
     try {
         const res = await fetch(
-            'https://gateway.api.globalfishingwatch.org/v3/events',
+            'https://gateway.api.globalfishingwatch.org/v3/events?limit=200&offset=0',
             {
                 method: 'POST',
                 headers: {
@@ -2111,8 +2111,7 @@ async function fetchGFW() {
                     types:     ['fishing'],
                     startDate: startDate + 'T00:00:00.000Z',
                     endDate:   endDate   + 'T23:59:59.999Z',
-                    geometry,
-                    limit: 9999
+                    geometry
                 })
             }
         );
