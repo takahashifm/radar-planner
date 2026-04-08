@@ -1,0 +1,1712 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>海洋監視レーダー設置計画ツール</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            display: flex;
+            height: 100vh;
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            background: #0d1b2a;
+            color: #e0e8f0;
+            overflow: hidden;
+        }
+
+        /* ---- Sidebar ---- */
+        #sidebar {
+            width: 310px;
+            min-width: 310px;
+            background: #112240;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border-right: 2px solid #1e3a5f;
+            box-shadow: 4px 0 12px rgba(0,0,0,0.4);
+        }
+
+        #sidebar-header {
+            padding: 14px 16px;
+            background: #0a1628;
+            border-bottom: 1px solid #1e3a5f;
+        }
+
+        #sidebar-header h2 {
+            font-size: 14px;
+            color: #64b5f6;
+            letter-spacing: 0.5px;
+        }
+
+        #sidebar-header p {
+            font-size: 11px;
+            color: #7090b0;
+            margin-top: 3px;
+        }
+
+        #sidebar-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        #sidebar-body::-webkit-scrollbar { width: 5px; }
+        #sidebar-body::-webkit-scrollbar-track { background: #0d1b2a; }
+        #sidebar-body::-webkit-scrollbar-thumb { background: #1e3a5f; border-radius: 3px; }
+
+        /* ---- Basemap selector ---- */
+        .basemap-list { display: flex; flex-direction: column; gap: 4px; }
+        .basemap-item {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            padding: 5px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            color: #90a8c0;
+            transition: background 0.15s;
+        }
+        .basemap-item:hover { background: #1e3a5f; }
+        .basemap-item input[type="radio"] { accent-color: #64b5f6; cursor: pointer; }
+        .basemap-item.active { color: #64b5f6; font-weight: bold; }
+        .basemap-group { font-size: 10px; color: #4a6080; padding: 6px 8px 2px; text-transform: uppercase; letter-spacing: 0.8px; }
+
+        /* ---- Sections ---- */
+        .sec {
+            margin-bottom: 12px;
+            background: #0d1b2a;
+            border-radius: 6px;
+            border: 1px solid #1e3a5f;
+            overflow: hidden;
+        }
+
+        .sec-hdr {
+            padding: 7px 12px;
+            background: #0a1628;
+            font-size: 10px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #64b5f6;
+            border-bottom: 1px solid #1e3a5f;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sec-body { padding: 10px; }
+
+        /* ---- Form ---- */
+        .field { margin-bottom: 9px; }
+        .field:last-child { margin-bottom: 0; }
+
+        .field-lbl {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 3px;
+            font-size: 11px;
+            color: #90a8c0;
+        }
+
+        .field-val {
+            font-size: 11px;
+            font-weight: bold;
+            color: #64b5f6;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            accent-color: #64b5f6;
+            margin-bottom: 4px;
+        }
+
+        input[type="number"], input[type="text"] {
+            width: 100%;
+            padding: 5px 8px;
+            background: #1e3a5f;
+            border: 1px solid #2a5080;
+            color: #e0e8f0;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        input[type="number"]:focus, input[type="text"]:focus {
+            outline: none;
+            border-color: #64b5f6;
+        }
+
+        input[type="color"] {
+            width: 100%;
+            height: 30px;
+            padding: 2px;
+            background: #1e3a5f;
+            border: 1px solid #2a5080;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .field-row { display: flex; gap: 8px; }
+        .field-row .field { flex: 1; }
+
+        /* ---- Compass ---- */
+        .compass-wrap {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 6px;
+        }
+
+        .compass-hint {
+            font-size: 10px;
+            color: #5070a0;
+            line-height: 1.6;
+        }
+
+        /* ---- Buttons ---- */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 6px 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: bold;
+            transition: all 0.15s;
+        }
+
+        .btn:active { transform: scale(0.96); }
+
+        .btn-primary   { background: #1565c0; color: white; }
+        .btn-primary:hover { background: #1976d2; }
+
+        .btn-success   { background: #1b5e20; color: #a5d6a7; border: 1px solid #2e7d32; }
+        .btn-success:hover { background: #2e7d32; color: white; }
+
+        .btn-danger    { background: #7f0000; color: #ffcdd2; }
+        .btn-danger:hover { background: #b71c1c; color: white; }
+
+        .btn-secondary { background: #1e3a5f; color: #90a8c0; border: 1px solid #2a5080; }
+        .btn-secondary:hover { background: #2a5080; color: #e0e8f0; }
+
+        .btn-full  { width: 100%; margin-bottom: 5px; }
+        .btn-full:last-child { margin-bottom: 0; }
+
+        .btn-group { display: flex; gap: 6px; }
+        .btn-group .btn { flex: 1; }
+
+        .btn-sm { padding: 4px 8px; font-size: 10px; }
+
+        /* ---- Radar list ---- */
+        .radar-item {
+            padding: 7px 10px;
+            margin-bottom: 5px;
+            background: #1e3a5f;
+            border-radius: 4px;
+            border-left: 3px solid #64b5f6;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .radar-item:last-child { margin-bottom: 0; }
+        .radar-item:hover { background: #2a5080; }
+        .radar-item.active { background: #2a5080; border-left-color: #81c784; }
+
+        .ri-name {
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 2px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .ri-info { font-size: 10px; color: #7090b0; }
+
+        .color-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 14px;
+            color: #4a6080;
+            font-size: 11px;
+            line-height: 1.7;
+        }
+
+        .info-box {
+            padding: 8px 10px;
+            background: #1e3a5f;
+            border-radius: 4px;
+            font-size: 11px;
+            color: #6080a0;
+            line-height: 1.7;
+        }
+
+        /* ---- Map area ---- */
+        #map-container {
+            flex: 1;
+            position: relative;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* ---- Map overlay UI ---- */
+        #mode-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            padding: 7px 12px;
+            background: rgba(10, 22, 40, 0.92);
+            border: 1px solid #1e3a5f;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #64b5f6;
+            pointer-events: none;
+            backdrop-filter: blur(4px);
+        }
+
+        #fit-btn {
+            position: absolute;
+            bottom: 30px;
+            right: 10px;
+            z-index: 1000;
+        }
+
+        /* ---- Status bar ---- */
+        #statusbar {
+            padding: 4px 12px;
+            background: #0a1628;
+            font-size: 10px;
+            color: #4a6080;
+            border-top: 1px solid #1e3a5f;
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Leaflet dark style */
+        .leaflet-container { background: #1a2a3a; }
+        .leaflet-control-zoom a { background: #112240 !important; color: #64b5f6 !important; border-color: #1e3a5f !important; }
+        .leaflet-control-scale-line { background: rgba(10,22,40,0.8) !important; border-color: #64b5f6 !important; color: #90a8c0 !important; }
+    </style>
+</head>
+<body>
+
+<!-- ============================================================
+     SIDEBAR
+     ============================================================ -->
+<div id="sidebar">
+    <div id="sidebar-header">
+        <h2>海洋監視レーダー設置計画ツール</h2>
+        <p>沿岸レーダーの配置とカバレッジ設計</p>
+    </div>
+
+    <div id="sidebar-body">
+
+        <!-- 背景地図 -->
+        <div class="sec">
+            <div class="sec-hdr">背景地図</div>
+            <div class="sec-body" style="padding:6px 4px">
+                <div class="basemap-list">
+                    <div class="basemap-group">汎用</div>
+                    <label class="basemap-item">
+                        <input type="radio" name="basemap" value="osm" checked onchange="switchBasemap(this.value)">
+                        OpenStreetMap
+                    </label>
+                    <label class="basemap-item">
+                        <input type="radio" name="basemap" value="carto_dark" onchange="switchBasemap(this.value)">
+                        CartoDB ダーク
+                    </label>
+                    <label class="basemap-item">
+                        <input type="radio" name="basemap" value="topo" onchange="switchBasemap(this.value)">
+                        地形図（OpenTopo）
+                    </label>
+
+                    <div class="basemap-group">国土地理院</div>
+                    <label class="basemap-item">
+                        <input type="radio" name="basemap" value="gsi_std" onchange="switchBasemap(this.value)">
+                        標準地図
+                    </label>
+                    <label class="basemap-item">
+                        <input type="radio" name="basemap" value="gsi_pale" onchange="switchBasemap(this.value)">
+                        淡色地図
+                    </label>
+                    <label class="basemap-item">
+                        <input type="radio" name="basemap" value="gsi_blank" onchange="switchBasemap(this.value)">
+                        白地図
+                    </label>
+                    <label class="basemap-item">
+                        <input type="radio" name="basemap" value="gsi_photo" onchange="switchBasemap(this.value)">
+                        写真（オルソ）
+                    </label>
+
+                    <div class="basemap-group">NASA / 衛星</div>
+                    <label class="basemap-item">
+                        <input type="radio" name="basemap" value="esri" onchange="switchBasemap(this.value)">
+                        衛星写真（Esri）
+                    </label>
+                    <label class="basemap-item">
+                        <input type="radio" name="basemap" value="nasa_blue" onchange="switchBasemap(this.value)">
+                        NASA Blue Marble
+                    </label>
+                    <label class="basemap-item">
+                        <input type="radio" name="basemap" value="nasa_night" onchange="switchBasemap(this.value)">
+                        NASA 夜間光（VIIRS）
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- 操作方法 -->
+        <div class="sec">
+            <div class="sec-hdr">操作方法</div>
+            <div class="sec-body">
+                <div class="info-box">
+                    ① 下記パラメーターを設定する<br>
+                    ② 地図上の海岸線をクリックしてレーダーを設置<br>
+                    ③ マーカーをドラッグして位置を微調整<br>
+                    ④ リスト or マーカーをクリックして編集
+                </div>
+            </div>
+        </div>
+
+        <!-- レーダー設定 -->
+        <div class="sec">
+            <div class="sec-hdr" id="settings-title">レーダー設定（新規）</div>
+            <div class="sec-body">
+
+                <div class="field">
+                    <div class="field-lbl"><span>レーダー名</span></div>
+                    <input type="text" id="f-name" value="レーダー1">
+                </div>
+
+                <div class="field">
+                    <div class="field-lbl">
+                        <span>探知距離</span>
+                        <span class="field-val" id="d-range">50 km</span>
+                    </div>
+                    <input type="range" id="s-range" min="1" max="300" value="50">
+                    <input type="number" id="n-range" value="50" min="1" max="500">
+                </div>
+
+                <div class="field">
+                    <div class="field-lbl">
+                        <span>方位角（海の方向）</span>
+                        <span class="field-val" id="d-dir">0°</span>
+                    </div>
+                    <input type="range" id="s-dir" min="0" max="359" value="0">
+                    <input type="number" id="n-dir" value="0" min="0" max="359">
+                    <div class="compass-wrap">
+                        <svg id="compass" width="56" height="56" viewBox="0 0 56 56">
+                            <circle cx="28" cy="28" r="26" fill="#1e3a5f" stroke="#2a5080" stroke-width="1.5"/>
+                            <text x="28" y="9"  text-anchor="middle" fill="#90a8c0" font-size="9">N</text>
+                            <text x="48" y="31" text-anchor="middle" fill="#90a8c0" font-size="9">E</text>
+                            <text x="28" y="51" text-anchor="middle" fill="#90a8c0" font-size="9">S</text>
+                            <text x="8"  y="31" text-anchor="middle" fill="#90a8c0" font-size="9">W</text>
+                            <line id="compass-needle" x1="28" y1="28" x2="28" y2="7"
+                                  stroke="#64b5f6" stroke-width="2.5" stroke-linecap="round"/>
+                            <circle cx="28" cy="28" r="3" fill="#64b5f6"/>
+                        </svg>
+                        <div class="compass-hint">
+                            0°=北, 90°=東<br>
+                            180°=南, 270°=西<br>
+                            レーダーを向ける方向
+                        </div>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <div class="field-lbl">
+                        <span>開き角（カバレッジ範囲）</span>
+                        <span class="field-val" id="d-spread">120°</span>
+                    </div>
+                    <input type="range" id="s-spread" min="1" max="360" value="120">
+                    <input type="number" id="n-spread" value="120" min="1" max="360">
+                </div>
+
+                <div class="field">
+                    <div class="field-lbl">
+                        <span>ビーム幅（グリッド角度分解能）</span>
+                        <span class="field-val" id="d-bwidth">5°</span>
+                    </div>
+                    <input type="range" id="s-bwidth" min="1" max="30" value="5" step="1">
+                    <input type="number" id="n-bwidth" value="5" min="0.5" max="90" step="0.5">
+                </div>
+
+                <div class="field">
+                    <div class="field-lbl">
+                        <span>レンジ分解能（グリッド距離間隔）</span>
+                        <span class="field-val" id="d-rres">10 km</span>
+                    </div>
+                    <input type="range" id="s-rres" min="1" max="100" value="10">
+                    <input type="number" id="n-rres" value="10" min="1" max="500">
+                </div>
+
+                <div class="field-row">
+                    <div class="field">
+                        <div class="field-lbl"><span>カバレッジ色</span></div>
+                        <input type="color" id="f-color" value="#ff6600">
+                    </div>
+                    <div class="field">
+                        <div class="field-lbl">
+                            <span>透明度</span>
+                            <span class="field-val" id="d-opacity">30%</span>
+                        </div>
+                        <input type="range" id="s-opacity" min="0" max="100" value="30">
+                    </div>
+                </div>
+
+                <div id="edit-btns" style="display:none; margin-top:10px">
+                    <div class="btn-group">
+                        <button class="btn btn-danger"    onclick="deleteSelected()">削除</button>
+                        <button class="btn btn-secondary" onclick="cancelSelection()">解除</button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- セッション管理 -->
+        <div class="sec">
+            <div class="sec-hdr">セッション管理</div>
+            <div class="sec-body">
+                <button class="btn btn-primary btn-full" onclick="saveSession()">現在の配置を保存 (.json)</button>
+                <button class="btn btn-secondary btn-full" onclick="loadSession()">配置ファイルを読み込む</button>
+            </div>
+        </div>
+
+        <!-- 設置済みリスト -->
+        <div class="sec">
+            <div class="sec-hdr">
+                設置済みレーダー
+                <span style="color:#90a8c0; font-weight:normal">
+                    <span id="radar-count">0</span>台
+                </span>
+            </div>
+            <div class="sec-body" style="padding:8px">
+                <div id="radar-list">
+                    <div class="empty-state">まだ設置されていません<br>地図をクリックして設置</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 重複解析 -->
+        <div class="sec">
+            <div class="sec-hdr">
+                カバレッジ重複解析
+                <span style="color:#90a8c0; font-weight:normal">
+                    <span id="overlap-count">0</span>域
+                </span>
+            </div>
+            <div class="sec-body">
+                <div class="info-box" style="margin-bottom:8px">
+                    2台以上が重複する海域を自動検出し、流速推定可能域に矢羽（ダミー）を表示します。
+                </div>
+                <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#90a8c0;cursor:pointer;margin-bottom:5px">
+                    <input type="checkbox" id="chk-overlaps" checked onchange="toggleOverlayVis()">
+                    重複域・矢羽を表示
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#64b5f6;cursor:pointer;font-weight:bold">
+                    <input type="checkbox" id="chk-focus" onchange="toggleFocusMode()">
+                    重複域のみ表示（流速推定可能域を強調）
+                </label>
+            </div>
+        </div>
+
+        <!-- エクスポート -->
+        <div class="sec">
+            <div class="sec-hdr">エクスポート</div>
+            <div class="sec-body">
+                <button class="btn btn-success btn-full" onclick="exportGeoJSON()">GeoJSON ダウンロード</button>
+                <button class="btn btn-success btn-full" onclick="exportKML()">KML ダウンロード（Google Earth用）</button>
+                <button class="btn btn-success btn-full" onclick="exportShapefile()">Shapefile ダウンロード（ZIP）</button>
+            </div>
+        </div>
+
+    </div><!-- /sidebar-body -->
+
+    <div id="statusbar">地図をクリックしてレーダーを設置してください</div>
+</div><!-- /sidebar -->
+
+<!-- ============================================================
+     MAP
+     ============================================================ -->
+<div id="map-container">
+    <div id="map"></div>
+    <div id="mode-badge">クリックでレーダーを設置</div>
+    <button class="btn btn-secondary btn-sm" id="fit-btn" onclick="fitAll()" style="display:none">
+        全体を表示
+    </button>
+</div>
+
+<!-- ============================================================
+     SCRIPTS
+     ============================================================ -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+
+<script>
+'use strict';
+
+/* ============================================================
+   State
+   ============================================================ */
+const radars   = [];
+const overlaps = [];   // { poly: L.polygon, barb: L.marker }
+let selectedId = null;
+let nextId     = 1;
+let nextNum    = 1;
+let focusMode  = false; // true = 重複域のみ表示
+
+const AUTO_COLORS = [
+    '#ff6600','#0088ff','#00cc55','#cc44ff',
+    '#ffcc00','#ff0066','#00ccee','#ff4400'
+];
+
+/* ============================================================
+   Map
+   ============================================================ */
+const map = L.map('map', { center: [43.5, 142.0], zoom: 9 });
+
+/* ---- 背景地図タイル定義 ---- */
+const basemapDefs = {
+    osm: {
+        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        opts: { attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 18 }
+    },
+    carto_dark: {
+        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+        opts: { attribution: '&copy; <a href="https://carto.com/">CartoDB</a>', maxZoom: 19 }
+    },
+    topo: {
+        url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+        opts: { attribution: '&copy; <a href="https://opentopomap.org">OpenTopoMap</a>', maxZoom: 17 }
+    },
+    gsi_std: {
+        url: 'https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png',
+        opts: { attribution: '&copy; <a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>', maxZoom: 18 }
+    },
+    gsi_pale: {
+        url: 'https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png',
+        opts: { attribution: '&copy; <a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>', maxZoom: 18 }
+    },
+    gsi_blank: {
+        url: 'https://cyberjapandata.gsi.go.jp/xyz/blank/{z}/{x}/{y}.png',
+        opts: { attribution: '&copy; <a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>', maxZoom: 14 }
+    },
+    gsi_photo: {
+        url: 'https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg',
+        opts: { attribution: '&copy; <a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>', maxZoom: 18 }
+    },
+    esri: {
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        opts: { attribution: '&copy; <a href="https://www.esri.com/">Esri</a>', maxZoom: 18 }
+    },
+    nasa_blue: {
+        url: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/BlueMarble_ShadedRelief/default/GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpg',
+        opts: { attribution: '&copy; NASA GIBS', maxZoom: 8 }
+    },
+    nasa_night: {
+        url: 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_Black_Marble/default/GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpg',
+        opts: { attribution: '&copy; NASA GIBS / VIIRS', maxZoom: 8 }
+    }
+};
+
+let currentBasemap = L.tileLayer(basemapDefs.osm.url, basemapDefs.osm.opts).addTo(map);
+
+function switchBasemap(key) {
+    const def = basemapDefs[key];
+    if (!def) return;
+    map.removeLayer(currentBasemap);
+    currentBasemap = L.tileLayer(def.url, def.opts).addTo(map);
+    currentBasemap.bringToBack();
+}
+
+L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
+
+map.getContainer().style.cursor = 'crosshair';
+
+map.on('click', e => addRadar(e.latlng.lat, e.latlng.lng));
+
+/* ============================================================
+   Geometry
+   ============================================================ */
+
+// Returns [lat, lng] of destination point from (lat,lng),
+// dist km away in bearing degrees (0=north clockwise)
+function destPoint(lat, lng, distKm, bearingDeg) {
+    const R  = 6371;
+    const φ1 = lat * Math.PI / 180;
+    const λ1 = lng * Math.PI / 180;
+    const θ  = bearingDeg * Math.PI / 180;
+    const δ  = distKm / R;
+
+    const φ2 = Math.asin(
+        Math.sin(φ1) * Math.cos(δ) +
+        Math.cos(φ1) * Math.sin(δ) * Math.cos(θ)
+    );
+    const λ2 = λ1 + Math.atan2(
+        Math.sin(θ) * Math.sin(δ) * Math.cos(φ1),
+        Math.cos(δ) - Math.sin(φ1) * Math.sin(φ2)
+    );
+    return [φ2 * 180 / Math.PI, ((λ2 * 180 / Math.PI) + 540) % 360 - 180];
+}
+
+// Fan polygon as [[lat,lng], ...] for Leaflet
+function fanLatLngs(lat, lng, rangeKm, dirDeg, spreadDeg) {
+    const N = 64;
+    const half  = spreadDeg / 2;
+    const start = dirDeg - half;
+    const end   = dirDeg + half;
+    const pts   = [[lat, lng]];
+    for (let i = 0; i <= N; i++) {
+        const angle = start + (end - start) * i / N;
+        pts.push(destPoint(lat, lng, rangeKm, angle));
+    }
+    pts.push([lat, lng]);
+    return pts;
+}
+
+/* ============================================================
+   Beam grid
+   ============================================================ */
+
+// Build Leaflet LayerGroup of grid lines for a radar
+function createGridGroup(r) {
+    const layers = [];
+    const half   = r.spread / 2;
+    const startA = r.dir - half;
+    const endA   = r.dir + half;
+    const style  = { color: r.color, weight: 0.8, opacity: 0.65, interactive: false };
+
+    // Radial beam-divider lines
+    if (r.beamWidth > 0) {
+        for (let a = startA; a <= endA + 1e-6; a += r.beamWidth) {
+            const angle = Math.min(a, endA);
+            const ep = destPoint(r.lat, r.lng, r.range, angle);
+            layers.push(L.polyline([[r.lat, r.lng], ep], style));
+        }
+    }
+
+    // Concentric range-ring arcs
+    if (r.rangeRes > 0) {
+        const N = 48;
+        for (let dist = r.rangeRes; dist < r.range - 1e-6; dist += r.rangeRes) {
+            const arc = [];
+            for (let i = 0; i <= N; i++) {
+                const a = startA + (endA - startA) * i / N;
+                arc.push(destPoint(r.lat, r.lng, dist, a));
+            }
+            layers.push(L.polyline(arc, style));
+        }
+    }
+
+    return L.layerGroup(layers);
+}
+
+// Refresh grid layer (remove old, create new)
+function refreshGrid(r) {
+    if (r.grid) { map.removeLayer(r.grid); r.grid = null; }
+    r.grid = createGridGroup(r).addTo(map);
+}
+
+// Get all grid lines as [{type, dist, pts:[lng,lat]}] for export
+function getGridLines(r) {
+    const lines  = [];
+    const half   = r.spread / 2;
+    const startA = r.dir - half;
+    const endA   = r.dir + half;
+
+    if (r.beamWidth > 0) {
+        for (let a = startA; a <= endA + 1e-6; a += r.beamWidth) {
+            const angle = Math.min(a, endA);
+            const ep = destPoint(r.lat, r.lng, r.range, angle);
+            lines.push({ radarName: r.name, type: 'beam', dist: 0,
+                         pts: [[r.lng, r.lat], [ep[1], ep[0]]] });
+        }
+    }
+
+    if (r.rangeRes > 0) {
+        const N = 48;
+        for (let dist = r.rangeRes; dist < r.range - 1e-6; dist += r.rangeRes) {
+            const arc = [];
+            for (let i = 0; i <= N; i++) {
+                const a = startA + (endA - startA) * i / N;
+                const pt = destPoint(r.lat, r.lng, dist, a);
+                arc.push([pt[1], pt[0]]);
+            }
+            lines.push({ radarName: r.name, type: 'range', dist, pts: arc });
+        }
+    }
+
+    return lines;
+}
+
+/* ============================================================
+   Radar CRUD
+   ============================================================ */
+
+function getForm() {
+    return {
+        name:      el('f-name').value.trim() || `レーダー${nextNum}`,
+        range:     clamp(parseFloat(el('n-range').value)  || 50,  1, 500),
+        dir:       clamp(parseFloat(el('n-dir').value)    || 0,   0, 359),
+        spread:    clamp(parseFloat(el('n-spread').value) || 120, 1, 360),
+        beamWidth: clamp(parseFloat(el('n-bwidth').value) || 5,   0.5, 90),
+        rangeRes:  clamp(parseFloat(el('n-rres').value)   || 10,  1, 500),
+        color:     el('f-color').value,
+        opacity:   parseInt(el('s-opacity').value) / 100
+    };
+}
+
+function addRadar(lat, lng) {
+    const f  = getForm();
+    const id = nextId++;
+
+    const lls = fanLatLngs(lat, lng, f.range, f.dir, f.spread);
+
+    const poly = L.polygon(lls, focusMode ? hiddenStyle() : polyStyle(f)).addTo(map);
+    const mark = L.marker([lat, lng], { icon: mkIcon(f.color), draggable: true }).addTo(map);
+
+    const r = { id, name: f.name, lat, lng, range: f.range, dir: f.dir, spread: f.spread,
+                beamWidth: f.beamWidth, rangeRes: f.rangeRes,
+                color: f.color, opacity: f.opacity, mark, poly, grid: null };
+    r.grid = createGridGroup(r).addTo(map);
+
+    mark.on('click',   e => { L.DomEvent.stop(e); selectRadar(id); });
+    poly.on('click',   e => { L.DomEvent.stop(e); selectRadar(id); });
+    mark.on('dragend', () => {
+        const p = mark.getLatLng();
+        r.lat = p.lat; r.lng = p.lng;
+        refreshPoly(r);
+        renderList();
+    });
+
+    radars.push(r);
+
+    // Auto-increment name for next
+    nextNum++;
+    const autoColor = AUTO_COLORS[nextNum % AUTO_COLORS.length];
+    el('f-name').value  = `レーダー${nextNum}`;
+    el('f-color').value = autoColor;
+
+    renderList();
+    updateOverlaps();
+    setStatus(`「${f.name}」を設置しました`);
+}
+
+function selectRadar(id) {
+    selectedId = id;
+    const r = radars.find(x => x.id === id);
+    if (!r) return;
+
+    el('f-name').value    = r.name;
+    setSN('range',  r.range,   1, 500);
+    setSN('dir',    r.dir,     0, 359);
+    setSN('spread', r.spread,  1, 360);
+    setSN('bwidth', r.beamWidth);
+    setSN('rres',   r.rangeRes);
+    el('f-color').value   = r.color;
+    el('s-opacity').value = Math.round(r.opacity * 100);
+
+    updateDisplays();
+
+    el('settings-title').textContent = `編集中：${r.name}`;
+    el('edit-btns').style.display    = 'block';
+    el('mode-badge').textContent     = `編集中：${r.name}`;
+
+    map.panTo([r.lat, r.lng]);
+    renderList();
+    setStatus(`「${r.name}」を選択中。スライダーを動かすとリアルタイムで更新されます。`);
+}
+
+function cancelSelection() {
+    selectedId = null;
+    el('settings-title').textContent = 'レーダー設定（新規）';
+    el('edit-btns').style.display    = 'none';
+    el('mode-badge').textContent     = 'クリックでレーダーを設置';
+    renderList();
+    setStatus('選択を解除しました');
+}
+
+function deleteSelected() {
+    if (!selectedId) return;
+    const idx = radars.findIndex(x => x.id === selectedId);
+    if (idx < 0) return;
+    const r = radars[idx];
+    map.removeLayer(r.mark);
+    map.removeLayer(r.poly);
+    if (r.grid) map.removeLayer(r.grid);
+    radars.splice(idx, 1);
+    setStatus(`「${r.name}」を削除しました`);
+    cancelSelection();
+    renderList();
+    updateOverlaps();
+}
+
+function updateSelected() {
+    if (!selectedId) return;
+    const r = radars.find(x => x.id === selectedId);
+    if (!r) return;
+    const f = getForm();
+    r.name      = f.name;
+    r.range     = f.range;
+    r.dir       = f.dir;
+    r.spread    = f.spread;
+    r.beamWidth = f.beamWidth;
+    r.rangeRes  = f.rangeRes;
+    r.color     = f.color;
+    r.opacity   = f.opacity;
+    refreshPoly(r);
+    el('settings-title').textContent = `編集中：${r.name}`;
+    renderList();
+}
+
+function refreshPoly(r) {
+    const lls = fanLatLngs(r.lat, r.lng, r.range, r.dir, r.spread);
+    r.poly.setLatLngs(lls);
+    r.poly.setStyle(focusMode ? hiddenStyle() : polyStyle(r));
+    r.mark.setIcon(mkIcon(r.color));
+    refreshGrid(r);
+    updateOverlaps();
+}
+
+function fitAll() {
+    if (!radars.length) return;
+    const group = L.featureGroup(radars.map(r => r.poly));
+    map.fitBounds(group.getBounds().pad(0.1));
+}
+
+/* ============================================================
+   UI helpers
+   ============================================================ */
+
+function el(id) { return document.getElementById(id); }
+
+function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
+
+function polyStyle(r) {
+    return {
+        color: r.color,
+        fillColor: r.color,
+        fillOpacity: r.opacity !== undefined ? r.opacity : r.opacity,
+        weight: 1.5,
+        opacity: 0.85
+    };
+}
+
+function mkIcon(color) {
+    return L.divIcon({
+        className: '',
+        html: `<div style="width:12px;height:12px;background:${color};border:2px solid #fff;border-radius:50%;box-shadow:0 0 6px rgba(0,0,0,.6)"></div>`,
+        iconSize: [12, 12],
+        iconAnchor: [6, 6]
+    });
+}
+
+function setSN(key, val) {
+    el(`s-${key}`).value = val;
+    el(`n-${key}`).value = val;
+}
+
+function updateDisplays() {
+    const range   = parseFloat(el('n-range').value)  || 50;
+    const dir     = parseFloat(el('n-dir').value)    || 0;
+    const spread  = parseFloat(el('n-spread').value) || 120;
+    const bwidth  = parseFloat(el('n-bwidth').value) || 5;
+    const rres    = parseFloat(el('n-rres').value)   || 10;
+    const opacity = parseInt(el('s-opacity').value);
+
+    el('d-range').textContent   = `${range} km`;
+    el('d-dir').textContent     = `${dir}°`;
+    el('d-spread').textContent  = `${spread}°`;
+    el('d-bwidth').textContent  = `${bwidth}°`;
+    el('d-rres').textContent    = `${rres} km`;
+    el('d-opacity').textContent = `${opacity}%`;
+
+    // Compass needle
+    const needle = el('compass-needle');
+    const r2 = 21;
+    const ex = 28 + r2 * Math.sin(dir * Math.PI / 180);
+    const ey = 28 - r2 * Math.cos(dir * Math.PI / 180);
+    needle.setAttribute('x2', ex.toFixed(1));
+    needle.setAttribute('y2', ey.toFixed(1));
+}
+
+function onFormChange() {
+    updateDisplays();
+    updateSelected();
+}
+
+/* ---- Slider ↔ Number sync ---- */
+function bindSN(key, min, max) {
+    const s = el(`s-${key}`), n = el(`n-${key}`);
+    s.addEventListener('input', () => {
+        n.value = s.value;
+        onFormChange();
+    });
+    n.addEventListener('input', () => {
+        const v = clamp(parseFloat(n.value) || 0, min, max);
+        s.value = v;
+        onFormChange();
+    });
+}
+
+bindSN('range',  1, 500);
+bindSN('dir',    0, 359);
+bindSN('spread', 1, 360);
+bindSN('bwidth', 0.5, 90);
+bindSN('rres',   1, 500);
+
+el('s-opacity').addEventListener('input', onFormChange);
+el('f-color').addEventListener('input',   onFormChange);
+el('f-name').addEventListener('input',    onFormChange);
+
+/* ============================================================
+   Radar list
+   ============================================================ */
+
+function renderList() {
+    el('radar-count').textContent = radars.length;
+    el('fit-btn').style.display   = radars.length ? 'block' : 'none';
+
+    const list = el('radar-list');
+
+    if (!radars.length) {
+        list.innerHTML = '<div class="empty-state">まだ設置されていません<br>地図をクリックして設置</div>';
+        return;
+    }
+
+    list.innerHTML = radars.map(r => `
+        <div class="radar-item ${r.id === selectedId ? 'active' : ''}" onclick="selectRadar(${r.id})">
+            <div class="ri-name">
+                <span class="color-dot" style="background:${r.color}"></span>
+                ${esc(r.name)}
+            </div>
+            <div class="ri-info">
+                ${r.lat.toFixed(4)}°N ${r.lng.toFixed(4)}°E &nbsp;|&nbsp;
+                ${r.range}km &nbsp;|&nbsp; 方位${r.dir}° 開角${r.spread}°<br>
+                ビーム幅${r.beamWidth}° &nbsp;|&nbsp; レンジ分解能${r.rangeRes}km
+            </div>
+        </div>
+    `).join('');
+}
+
+/* ============================================================
+   Export: GeoJSON
+   ============================================================ */
+
+function buildGeoJSON() {
+    const features = [];
+
+    for (const r of radars) {
+        // Fan polygon
+        features.push({
+            type: 'Feature',
+            properties: {
+                name:          r.name,
+                lat:           r.lat,
+                lng:           r.lng,
+                range_km:      r.range,
+                direction_deg: r.dir,
+                spread_deg:    r.spread,
+                beam_width_deg: r.beamWidth,
+                range_res_km:   r.rangeRes,
+                color:         r.color
+            },
+            geometry: {
+                type: 'Polygon',
+                coordinates: [fanLatLngs(r.lat, r.lng, r.range, r.dir, r.spread)
+                                .map(p => [p[1], p[0]])]
+            }
+        });
+
+        // Grid lines
+        for (const ln of getGridLines(r)) {
+            features.push({
+                type: 'Feature',
+                properties: {
+                    name:       r.name,
+                    grid_type:  ln.type,         // 'beam' or 'range'
+                    dist_km:    ln.dist
+                },
+                geometry: { type: 'LineString', coordinates: ln.pts }
+            });
+        }
+    }
+
+    return { type: 'FeatureCollection', features };
+}
+
+function exportGeoJSON() {
+    if (!radars.length) { alert('レーダーが設置されていません。'); return; }
+    dlText('radar_coverage.geojson', JSON.stringify(buildGeoJSON(), null, 2), 'application/geo+json');
+    setStatus('GeoJSON をダウンロードしました');
+}
+
+/* ============================================================
+   Export: KML
+   ============================================================ */
+
+function exportKML() {
+    if (!radars.length) { alert('レーダーが設置されていません。'); return; }
+
+    const marks = radars.map(r => {
+        const coords = fanLatLngs(r.lat, r.lng, r.range, r.dir, r.spread)
+            .map(p => `${p[1].toFixed(6)},${p[0].toFixed(6)},0`)
+            .join(' ');
+        const fc = hex2kml(r.color, r.opacity);
+        const lc = hex2kml(r.color, 0.9);
+        const gc = hex2kml(r.color, 0.7);
+
+        // Grid line placemarks
+        const gridKml = getGridLines(r).map(ln => {
+            const lnCoords = ln.pts.map(p => `${p[0].toFixed(6)},${p[1].toFixed(6)},0`).join(' ');
+            const label = ln.type === 'beam' ? 'ビーム' : `レンジ ${ln.dist.toFixed(1)}km`;
+            return `  <Placemark>
+    <name>${escXml(r.name)} ${label}</name>
+    <Style><LineStyle><color>${gc}</color><width>0.8</width></LineStyle></Style>
+    <LineString><tessellate>1</tessellate><coordinates>${lnCoords}</coordinates></LineString>
+  </Placemark>`;
+        }).join('\n');
+
+        return `  <Folder>
+    <name>${escXml(r.name)}</name>
+    <Placemark>
+      <name>${escXml(r.name)} カバレッジ</name>
+      <description>探知距離:${r.range}km 方位:${r.dir}° 開角:${r.spread}° ビーム幅:${r.beamWidth}° レンジ分解能:${r.rangeRes}km</description>
+      <Style>
+        <LineStyle><color>${lc}</color><width>1.5</width></LineStyle>
+        <PolyStyle><color>${fc}</color><fill>1</fill><outline>1</outline></PolyStyle>
+      </Style>
+      <Polygon><tessellate>1</tessellate>
+        <outerBoundaryIs><LinearRing><coordinates>${coords}</coordinates></LinearRing></outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+${gridKml}
+  </Folder>`;
+    }).join('\n');
+
+    const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+  <name>海洋監視レーダーカバレッジ</name>
+  <description>海洋監視レーダー設置計画ツールで生成</description>
+${marks}
+</Document>
+</kml>`;
+
+    dlText('radar_coverage.kml', kml, 'application/vnd.google-earth.kml+xml');
+    setStatus('KML をダウンロードしました（Google Earth で開けます）');
+}
+
+/* ============================================================
+   Export: Shapefile (SHP+SHX+DBF+PRJ in ZIP)
+   ============================================================ */
+
+function exportShapefile() {
+    if (!radars.length) { alert('レーダーが設置されていません。'); return; }
+    if (typeof JSZip === 'undefined') {
+        alert('ZIPライブラリが読み込まれていません。GeoJSONをお使いください。');
+        return;
+    }
+
+    const allPoly = radars.map(r =>
+        fanLatLngs(r.lat, r.lng, r.range, r.dir, r.spread).map(p => [p[1], p[0]])
+    );
+    const allGridLines = radars.flatMap(r => getGridLines(r));
+
+    const { shp: polyShp, shx: polyShx } = buildSHP(allPoly);
+    const polyDbf = buildDBF(radars);
+
+    const prj = 'GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]]';
+
+    const zip = new JSZip();
+    zip.file('radar_coverage.shp', polyShp);
+    zip.file('radar_coverage.shx', polyShx);
+    zip.file('radar_coverage.dbf', polyDbf);
+    zip.file('radar_coverage.prj', prj);
+
+    if (allGridLines.length) {
+        const { shp: gridShp, shx: gridShx } = buildPolylineSHP(allGridLines.map(l => l.pts));
+        const gridDbf = buildGridDBF(allGridLines);
+        zip.file('radar_grid.shp', gridShp);
+        zip.file('radar_grid.shx', gridShx);
+        zip.file('radar_grid.dbf', gridDbf);
+        zip.file('radar_grid.prj', prj);
+    }
+
+    zip.generateAsync({ type: 'blob' }).then(blob => {
+        dlBlob('radar_coverage_shapefile.zip', blob);
+        setStatus('Shapefile（ZIP）をダウンロードしました（coverage + grid の2レイヤー）');
+    });
+}
+
+/* --- SHP / SHX builder --- */
+function buildSHP(polygons) {
+    // Content lengths per record (in bytes)
+    const contentLens = polygons.map(pts =>
+        4 + 32 + 4 + 4 + 4 + 16 * pts.length  // type + bbox + nparts + npts + parts + points
+    );
+
+    const shpTotal = 100 + polygons.reduce((s, _, i) => s + 8 + contentLens[i], 0);
+    const shxTotal = 100 + polygons.length * 8;
+
+    const shpBuf = new ArrayBuffer(shpTotal);
+    const shxBuf = new ArrayBuffer(shxTotal);
+    const sv     = new DataView(shpBuf);
+    const xv     = new DataView(shxBuf);
+
+    // Global bbox
+    let gxn = Infinity, gyn = Infinity, gxx = -Infinity, gyx = -Infinity;
+    for (const pts of polygons)
+        for (const [x, y] of pts) {
+            if (x < gxn) gxn = x; if (y < gyn) gyn = y;
+            if (x > gxx) gxx = x; if (y > gyx) gyx = y;
+        }
+
+    function writeHeader(v, fileLen) {
+        i32BE(v, 0, 9994);
+        i32BE(v, 24, fileLen / 2);
+        i32LE(v, 28, 1000);
+        i32LE(v, 32, 5);       // Polygon
+        f64LE(v, 36, gxn); f64LE(v, 44, gyn);
+        f64LE(v, 52, gxx); f64LE(v, 60, gyx);
+    }
+
+    writeHeader(sv, shpTotal);
+    writeHeader(xv, shxTotal);
+
+    let so = 100, xo = 100;
+
+    polygons.forEach((pts, i) => {
+        const cl = contentLens[i];
+        let rxn = Infinity, ryn = Infinity, rxx = -Infinity, ryx = -Infinity;
+        for (const [x, y] of pts) {
+            if (x < rxn) rxn = x; if (y < ryn) ryn = y;
+            if (x > rxx) rxx = x; if (y > ryx) ryx = y;
+        }
+
+        // SHX
+        i32BE(xv, xo,     so / 2);
+        i32BE(xv, xo + 4, cl / 2);
+        xo += 8;
+
+        // SHP record header
+        i32BE(sv, so,     i + 1);
+        i32BE(sv, so + 4, cl / 2);
+        so += 8;
+
+        // Content
+        i32LE(sv, so, 5); so += 4;     // Shape type
+        f64LE(sv, so, rxn); so += 8;
+        f64LE(sv, so, ryn); so += 8;
+        f64LE(sv, so, rxx); so += 8;
+        f64LE(sv, so, ryx); so += 8;
+        i32LE(sv, so, 1); so += 4;     // NumParts
+        i32LE(sv, so, pts.length); so += 4;  // NumPoints
+        i32LE(sv, so, 0); so += 4;     // Parts[0] = 0
+        for (const [x, y] of pts) {
+            f64LE(sv, so, x); so += 8;
+            f64LE(sv, so, y); so += 8;
+        }
+    });
+
+    return { shp: shpBuf, shx: shxBuf };
+}
+
+/* --- DBF builder --- */
+function buildDBF(rs) {
+    // Fields: NAME(C50), RANGE_KM(N10), DIR_DEG(N10), SPREAD_DEG(N10), COLOR(C8)
+    const fields = [
+        { name: 'NAME',       type: 0x43, len: 50, dec: 0 },
+        { name: 'RANGE_KM',   type: 0x4E, len: 10, dec: 2 },
+        { name: 'DIR_DEG',    type: 0x4E, len: 10, dec: 2 },
+        { name: 'SPREAD_DEG', type: 0x4E, len: 10, dec: 2 },
+        { name: 'COLOR',      type: 0x43, len: 8,  dec: 0 }
+    ];
+
+    const hdrSize  = 32 + 32 * fields.length + 1;
+    const recSize  = 1 + fields.reduce((s, f) => s + f.len, 0);
+    const totalLen = hdrSize + rs.length * recSize + 1;
+
+    const buf  = new ArrayBuffer(totalLen);
+    const view = new DataView(buf);
+    const b    = new Uint8Array(buf);
+    const enc  = new TextEncoder();
+
+    b[0] = 3;  // dBASE III
+    const now = new Date();
+    b[1] = now.getFullYear() - 1900; b[2] = now.getMonth() + 1; b[3] = now.getDate();
+
+    view.setInt32(4, rs.length, true);
+    view.setInt16(8, hdrSize,   true);
+    view.setInt16(10, recSize,  true);
+
+    // Field descriptors
+    let fo = 32;
+    for (const f of fields) {
+        const nb = enc.encode(f.name);
+        for (let i = 0; i < Math.min(nb.length, 10); i++) b[fo + i] = nb[i];
+        b[fo + 11] = f.type;
+        b[fo + 16] = f.len;
+        b[fo + 17] = f.dec;
+        fo += 32;
+    }
+    b[hdrSize - 1] = 0x0D;  // Terminator
+
+    // Records
+    let ro = hdrSize;
+    for (const r of rs) {
+        b[ro] = 0x20;  // Active
+        let p = ro + 1;
+
+        function writeC(str, len) {
+            const s = (str || '').substring(0, len).padEnd(len);
+            const e = enc.encode(s);
+            for (let i = 0; i < len; i++) b[p + i] = e[i] !== undefined ? e[i] : 0x20;
+            p += len;
+        }
+        function writeN(val, len) {
+            const s = val.toFixed(2).padStart(len);
+            const e = enc.encode(s);
+            for (let i = 0; i < len; i++) b[p + i] = e[i] !== undefined ? e[i] : 0x20;
+            p += len;
+        }
+
+        writeC(r.name,   50);
+        writeN(r.range,  10);
+        writeN(r.dir,    10);
+        writeN(r.spread, 10);
+        writeC(r.color,   8);
+
+        ro += recSize;
+    }
+    b[totalLen - 1] = 0x1A;  // EOF
+
+    return buf;
+}
+
+/* --- PolyLine SHP / SHX builder (shape type 3) --- */
+function buildPolylineSHP(lines) {
+    // lines: array of [[lng,lat], ...] polylines, one record each (1 part)
+    if (!lines.length) return { shp: new ArrayBuffer(100), shx: new ArrayBuffer(100) };
+
+    const contentLens = lines.map(pts =>
+        4 + 32 + 4 + 4 + 4 * 1 + 16 * pts.length  // type+bbox+nparts+npts+parts[0]+points
+    );
+
+    const shpTotal = 100 + lines.reduce((s, _, i) => s + 8 + contentLens[i], 0);
+    const shxTotal = 100 + lines.length * 8;
+
+    const shpBuf = new ArrayBuffer(shpTotal);
+    const shxBuf = new ArrayBuffer(shxTotal);
+    const sv = new DataView(shpBuf);
+    const xv = new DataView(shxBuf);
+
+    let gxn = Infinity, gyn = Infinity, gxx = -Infinity, gyx = -Infinity;
+    for (const pts of lines)
+        for (const [x, y] of pts) {
+            if (x < gxn) gxn = x; if (y < gyn) gyn = y;
+            if (x > gxx) gxx = x; if (y > gyx) gyx = y;
+        }
+
+    function writeHdr(v, len) {
+        i32BE(v, 0, 9994); i32BE(v, 24, len / 2);
+        i32LE(v, 28, 1000); i32LE(v, 32, 3);  // PolyLine
+        f64LE(v, 36, gxn); f64LE(v, 44, gyn);
+        f64LE(v, 52, gxx); f64LE(v, 60, gyx);
+    }
+    writeHdr(sv, shpTotal);
+    writeHdr(xv, shxTotal);
+
+    let so = 100, xo = 100;
+    lines.forEach((pts, i) => {
+        const cl = contentLens[i];
+        let rxn = Infinity, ryn = Infinity, rxx = -Infinity, ryx = -Infinity;
+        for (const [x, y] of pts) {
+            if (x < rxn) rxn = x; if (y < ryn) ryn = y;
+            if (x > rxx) rxx = x; if (y > ryx) ryx = y;
+        }
+        i32BE(xv, xo,     so / 2); i32BE(xv, xo + 4, cl / 2); xo += 8;
+        i32BE(sv, so,     i + 1);  i32BE(sv, so + 4, cl / 2);  so += 8;
+        i32LE(sv, so, 3); so += 4;
+        f64LE(sv, so, rxn); so += 8; f64LE(sv, so, ryn); so += 8;
+        f64LE(sv, so, rxx); so += 8; f64LE(sv, so, ryx); so += 8;
+        i32LE(sv, so, 1); so += 4;             // NumParts
+        i32LE(sv, so, pts.length); so += 4;    // NumPoints
+        i32LE(sv, so, 0); so += 4;             // Parts[0]
+        for (const [x, y] of pts) { f64LE(sv, so, x); so += 8; f64LE(sv, so, y); so += 8; }
+    });
+
+    return { shp: shpBuf, shx: shxBuf };
+}
+
+/* --- Grid lines DBF (NAME C50, TYPE C10, DIST_KM N10) --- */
+function buildGridDBF(lines) {
+    const fields = [
+        { name: 'NAME',    type: 0x43, len: 50, dec: 0 },
+        { name: 'TYPE',    type: 0x43, len: 10, dec: 0 },
+        { name: 'DIST_KM', type: 0x4E, len: 10, dec: 2 }
+    ];
+    const hdrSize  = 32 + 32 * fields.length + 1;
+    const recSize  = 1 + fields.reduce((s, f) => s + f.len, 0);
+    const totalLen = hdrSize + lines.length * recSize + 1;
+
+    const buf = new ArrayBuffer(totalLen);
+    const view = new DataView(buf);
+    const b = new Uint8Array(buf);
+    const enc = new TextEncoder();
+
+    b[0] = 3;
+    const now = new Date();
+    b[1] = now.getFullYear() - 1900; b[2] = now.getMonth() + 1; b[3] = now.getDate();
+    view.setInt32(4, lines.length, true);
+    view.setInt16(8, hdrSize,      true);
+    view.setInt16(10, recSize,     true);
+
+    let fo = 32;
+    for (const f of fields) {
+        const nb = enc.encode(f.name);
+        for (let i = 0; i < Math.min(nb.length, 10); i++) b[fo + i] = nb[i];
+        b[fo + 11] = f.type; b[fo + 16] = f.len; b[fo + 17] = f.dec;
+        fo += 32;
+    }
+    b[hdrSize - 1] = 0x0D;
+
+    let ro = hdrSize;
+    for (const ln of lines) {
+        b[ro] = 0x20;
+        let p = ro + 1;
+        function wC(str, len) {
+            const s = (str || '').substring(0, len).padEnd(len);
+            const e = enc.encode(s);
+            for (let i = 0; i < len; i++) b[p + i] = e[i] !== undefined ? e[i] : 0x20;
+            p += len;
+        }
+        function wN(val, len) {
+            const s = val.toFixed(2).padStart(len);
+            const e = enc.encode(s);
+            for (let i = 0; i < len; i++) b[p + i] = e[i] !== undefined ? e[i] : 0x20;
+            p += len;
+        }
+        wC(ln.radarName, 50);
+        wC(ln.type,      10);
+        wN(ln.dist,      10);
+        ro += recSize;
+    }
+    b[totalLen - 1] = 0x1A;
+    return buf;
+}
+
+/* --- Binary DataView helpers --- */
+function i32BE(v, o, n) { v.setInt32(o, n, false); }
+function i32LE(v, o, n) { v.setInt32(o, n, true); }
+function f64LE(v, o, n) { v.setFloat64(o, n, true); }
+
+/* ============================================================
+   Utility
+   ============================================================ */
+
+function esc(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function escXml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&apos;').replace(/"/g,'&quot;');
+}
+
+// KML color: aabbggrr
+function hex2kml(hex, opacity) {
+    const a = Math.round((opacity !== undefined ? opacity : 0.3) * 255).toString(16).padStart(2,'0');
+    const r = hex.slice(1,3).toLowerCase();
+    const g = hex.slice(3,5).toLowerCase();
+    const bv= hex.slice(5,7).toLowerCase();
+    return `${a}${bv}${g}${r}`;
+}
+
+function dlText(name, text, mime) {
+    dlBlob(name, new Blob([text], { type: mime }));
+}
+
+function dlBlob(name, blob) {
+    const url = URL.createObjectURL(blob);
+    const a   = Object.assign(document.createElement('a'), { href: url, download: name });
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+function setStatus(msg) {
+    el('statusbar').textContent = msg;
+}
+
+/* ============================================================
+   Session save / load
+   ============================================================ */
+
+function saveSession() {
+    if (!radars.length) { alert('レーダーが設置されていません。'); return; }
+    const data = {
+        version: 1,
+        nextNum,
+        radars: radars.map(r => ({
+            name: r.name, lat: r.lat, lng: r.lng,
+            range: r.range, dir: r.dir, spread: r.spread,
+            beamWidth: r.beamWidth, rangeRes: r.rangeRes,
+            color: r.color, opacity: r.opacity
+        }))
+    };
+    dlText('radar_session.json', JSON.stringify(data, null, 2), 'application/json');
+    setStatus('セッションを保存しました');
+}
+
+function loadSession() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+            try {
+                const data = JSON.parse(ev.target.result);
+                // Clear existing
+                for (const r of radars) {
+                    map.removeLayer(r.mark);
+                    map.removeLayer(r.poly);
+                    if (r.grid) map.removeLayer(r.grid);
+                }
+                radars.length = 0;
+                cancelSelection();
+
+                // Restore
+                const list = data.radars || data;  // support both formats
+                for (const d of list) restoreRadar(d);
+                nextNum = data.nextNum || radars.length + 1;
+                el('f-name').value  = `レーダー${nextNum}`;
+                el('f-color').value = AUTO_COLORS[nextNum % AUTO_COLORS.length];
+
+                renderList();
+                updateOverlaps();
+                if (radars.length) fitAll();
+                setStatus(`セッションを読み込みました（${radars.length}台）`);
+            } catch (err) {
+                alert('読み込みエラー: ' + err.message);
+            }
+        };
+        reader.readAsText(file);
+    };
+    input.click();
+}
+
+function restoreRadar(d) {
+    const id  = nextId++;
+    const lls = fanLatLngs(d.lat, d.lng, d.range, d.dir, d.spread);
+    const poly = L.polygon(lls, focusMode ? hiddenStyle() : polyStyle(d)).addTo(map);
+    const mark = L.marker([d.lat, d.lng], { icon: mkIcon(d.color), draggable: true }).addTo(map);
+
+    const r = {
+        id, name: d.name, lat: d.lat, lng: d.lng,
+        range: d.range, dir: d.dir, spread: d.spread,
+        beamWidth: d.beamWidth || 5, rangeRes: d.rangeRes || 10,
+        color: d.color, opacity: d.opacity,
+        mark, poly, grid: null
+    };
+    r.grid = createGridGroup(r).addTo(map);
+
+    mark.on('click',   e => { L.DomEvent.stop(e); selectRadar(id); });
+    poly.on('click',   e => { L.DomEvent.stop(e); selectRadar(id); });
+    mark.on('dragend', () => {
+        const p = mark.getLatLng();
+        r.lat = p.lat; r.lng = p.lng;
+        refreshPoly(r);
+        renderList();
+    });
+    radars.push(r);
+}
+
+/* ============================================================
+   Overlap detection & wind barbs
+   ============================================================ */
+
+function clearOverlaps() {
+    for (const ov of overlaps) {
+        if (ov.poly) map.removeLayer(ov.poly);
+        if (ov.barb) map.removeLayer(ov.barb);
+    }
+    overlaps.length = 0;
+}
+
+function updateOverlaps() {
+    clearOverlaps();
+    if (!window.turf || radars.length < 2) {
+        el('overlap-count').textContent = 0;
+        return;
+    }
+
+    const show = el('chk-overlaps').checked;
+
+    for (let i = 0; i < radars.length; i++) {
+        for (let j = i + 1; j < radars.length; j++) {
+            const ri = radars[i], rj = radars[j];
+            try {
+                const intersection = turf.intersect(turfPoly(ri), turfPoly(rj));
+                if (!intersection) continue;
+
+                // Intersection polygon
+                const geom = intersection.geometry;
+                // handle both Polygon and MultiPolygon
+                const rings = geom.type === 'MultiPolygon'
+                    ? geom.coordinates.flatMap(c => c)
+                    : geom.coordinates;
+
+                for (const ring of rings) {
+                    const lls = ring.map(c => [c[1], c[0]]);
+                    const leafPoly = L.polygon(lls, focusMode ? focusOverStyle() : normalOverStyle());
+                    if (show) leafPoly.addTo(map);
+
+                    // Centroid & barb
+                    const cent = turf.centroid(turf.polygon([ring]));
+                    const [lng, lat] = cent.geometry.coordinates;
+                    const dir = bearingBetween(ri.lat, ri.lng, rj.lat, rj.lng) + 90; // ⊥ to radar pair
+                    const barb = L.marker([lat, lng], {
+                        icon: mkBarbIcon(dir),
+                        interactive: false,
+                        title: `交差域（${ri.name} × ${rj.name}）`
+                    });
+                    if (show) barb.addTo(map);
+
+                    overlaps.push({ poly: leafPoly, barb });
+                }
+            } catch (_) { /* geometry edge cases */ }
+        }
+    }
+
+    el('overlap-count').textContent = overlaps.length;
+    setStatus(overlaps.length
+        ? `重複域 ${overlaps.length}箇所を検出しました（流速推定可能域）`
+        : '重複域なし');
+}
+
+function toggleOverlayVis() {
+    const show = el('chk-overlaps').checked;
+    for (const ov of overlaps) {
+        if (show) {
+            ov.poly.addTo(map);
+            ov.barb.addTo(map);
+        } else {
+            map.removeLayer(ov.poly);
+            map.removeLayer(ov.barb);
+        }
+    }
+}
+
+function toggleFocusMode() {
+    focusMode = el('chk-focus').checked;
+
+    // レーダー扇形：フォーカスモード時は非表示
+    for (const r of radars) {
+        r.poly.setStyle(focusMode ? hiddenStyle() : polyStyle(r));
+    }
+
+    // 重複ポリゴン：フォーカスモード時は強調色
+    const ovStyle = focusMode ? focusOverStyle() : normalOverStyle();
+    for (const ov of overlaps) {
+        ov.poly.setStyle(ovStyle);
+    }
+}
+
+// スタイル定義
+function hiddenStyle()     { return { fillOpacity: 0, opacity: 0, interactive: false }; }
+function normalOverStyle() { return { color: '#ffffff', fillColor: '#ffffaa', fillOpacity: 0.22,
+                                      weight: 1.2, opacity: 0.7, dashArray: '5,4', interactive: false }; }
+function focusOverStyle()  { return { color: '#80ffff', fillColor: '#00ccff', fillOpacity: 0.50,
+                                      weight: 2, opacity: 1, dashArray: null, interactive: false }; }
+
+// GeoJSON Feature<Polygon> for turf
+function turfPoly(r) {
+    const coords = fanLatLngs(r.lat, r.lng, r.range, r.dir, r.spread)
+        .map(p => [p[1], p[0]]);
+    return turf.polygon([coords]);
+}
+
+// Bearing from point A to point B (degrees, clockwise from north)
+function bearingBetween(lat1, lng1, lat2, lng2) {
+    const dL = (lng2 - lng1) * Math.PI / 180;
+    const φ1 = lat1 * Math.PI / 180;
+    const φ2 = lat2 * Math.PI / 180;
+    const y = Math.sin(dL) * Math.cos(φ2);
+    const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(dL);
+    return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+// Wind barb icon (SVG) pointing in dirDeg
+function mkBarbIcon(dirDeg) {
+    const rad  = dirDeg * Math.PI / 180;
+    const cx = 16, cy = 16, shaft = 11;
+
+    function pt(dist, angleRad) {
+        return [
+            (cx + dist * Math.sin(angleRad)).toFixed(1),
+            (cy - dist * Math.cos(angleRad)).toFixed(1)
+        ];
+    }
+
+    const [tx, ty] = pt(shaft, rad);           // arrow tip
+    const [bx, by] = pt(-4,   rad);            // tail
+    const perp = rad + Math.PI / 2;
+    const [b1ax, b1ay] = pt(shaft * 0.6, rad); // barb 1 root
+    const [b1bx, b1by] = pt(7, perp + (rad - Math.PI));  // barb 1 tip (relative hack)
+    // Use perpendicular offset for barb tips
+    const barbLen = 7;
+    const br = rad - Math.PI * 0.75; // barb angle
+    const [p1x, p1y] = pt(shaft * 0.65, rad);
+    const [p2x, p2y] = pt(shaft * 0.35, rad);
+    const bex1 = (+p1x + barbLen * Math.sin(br)).toFixed(1);
+    const bey1 = (+p1y - barbLen * Math.cos(br)).toFixed(1);
+    const bex2 = (+p2x + barbLen * 0.75 * Math.sin(br)).toFixed(1);
+    const bey2 = (+p2y - barbLen * 0.75 * Math.cos(br)).toFixed(1);
+
+    const svg = `<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"
+         style="filter:drop-shadow(0 0 3px #000)">
+      <circle cx="16" cy="16" r="14" fill="rgba(5,15,40,.78)" stroke="rgba(255,255,160,.45)" stroke-width="1"/>
+      <line x1="${bx}" y1="${by}" x2="${tx}" y2="${ty}" stroke="#ffef80" stroke-width="1.8" stroke-linecap="round"/>
+      <line x1="${p1x}" y1="${p1y}" x2="${bex1}" y2="${bey1}" stroke="#ffef80" stroke-width="1.4" stroke-linecap="round"/>
+      <line x1="${p2x}" y1="${p2y}" x2="${bex2}" y2="${bey2}" stroke="#ffef80" stroke-width="1.4" stroke-linecap="round"/>
+      <circle cx="${tx}" cy="${ty}" r="2.2" fill="#ffef80"/>
+    </svg>`;
+
+    return L.divIcon({ className: '', html: svg, iconSize: [32, 32], iconAnchor: [16, 16] });
+}
+
+/* ============================================================
+   Init
+   ============================================================ */
+updateDisplays();
+
+</script>
+</body>
+</html>
