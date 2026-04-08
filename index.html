@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>海洋監視レーダー設置計画ツール</title>
+    <title>水産業分野のための海洋レーダー設置計画ツール</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -341,8 +341,8 @@
      ============================================================ -->
 <div id="sidebar">
     <div id="sidebar-header">
-        <h2>海洋監視レーダー設置計画ツール</h2>
-        <p>沿岸レーダーの配置とカバレッジ設計</p>
+        <h2>水産業分野のための海洋レーダー設置計画ツール</h2>
+        <p>レーダーの配置とカバレッジ設計</p>
     </div>
 
     <div id="sidebar-body">
@@ -351,53 +351,18 @@
         <div class="sec">
             <div class="sec-hdr">背景地図</div>
             <div class="sec-body" style="padding:6px 4px">
-                <div class="basemap-list">
-                    <div class="basemap-group">汎用</div>
-                    <label class="basemap-item">
-                        <input type="radio" name="basemap" value="osm" checked onchange="switchBasemap(this.value)">
-                        OpenStreetMap
-                    </label>
-                    <label class="basemap-item">
-                        <input type="radio" name="basemap" value="carto_dark" onchange="switchBasemap(this.value)">
-                        CartoDB ダーク
-                    </label>
-                    <label class="basemap-item">
-                        <input type="radio" name="basemap" value="topo" onchange="switchBasemap(this.value)">
-                        地形図（OpenTopo）
-                    </label>
-
-                    <div class="basemap-group">国土地理院</div>
-                    <label class="basemap-item">
-                        <input type="radio" name="basemap" value="gsi_std" onchange="switchBasemap(this.value)">
-                        標準地図
-                    </label>
-                    <label class="basemap-item">
-                        <input type="radio" name="basemap" value="gsi_pale" onchange="switchBasemap(this.value)">
-                        淡色地図
-                    </label>
-                    <label class="basemap-item">
-                        <input type="radio" name="basemap" value="gsi_blank" onchange="switchBasemap(this.value)">
-                        白地図
-                    </label>
-                    <label class="basemap-item">
-                        <input type="radio" name="basemap" value="gsi_photo" onchange="switchBasemap(this.value)">
-                        写真（オルソ）
-                    </label>
-
-                    <div class="basemap-group">NASA / 衛星</div>
-                    <label class="basemap-item">
-                        <input type="radio" name="basemap" value="esri" onchange="switchBasemap(this.value)">
-                        衛星写真（Esri）
-                    </label>
-                    <label class="basemap-item">
-                        <input type="radio" name="basemap" value="nasa_blue" onchange="switchBasemap(this.value)">
-                        NASA Blue Marble
-                    </label>
-                    <label class="basemap-item">
-                        <input type="radio" name="basemap" value="nasa_night" onchange="switchBasemap(this.value)">
-                        NASA 夜間光（VIIRS）
-                    </label>
-                </div>
+                <select onchange="switchBasemap(this.value)" style="width:100%;padding:4px 6px;background:#1e3a5f;color:#e0e8f0;border:1px solid #2a5080;border-radius:4px;font-size:12px">
+                    <option value="osm" selected>OpenStreetMap</option>
+                    <option value="carto_dark">CartoDB ダーク</option>
+                    <option value="topo">地形図（OpenTopo）</option>
+                    <option value="gsi_std">国土地理院 標準地図</option>
+                    <option value="gsi_pale">国土地理院 淡色地図</option>
+                    <option value="gsi_blank">国土地理院 白地図</option>
+                    <option value="gsi_photo">国土地理院 写真（オルソ）</option>
+                    <option value="esri">衛星写真（Esri）</option>
+                    <option value="nasa_blue">NASA Blue Marble</option>
+                    <option value="nasa_night">NASA 夜間光（VIIRS）</option>
+                </select>
             </div>
         </div>
 
@@ -429,8 +394,8 @@
                         <span>探知距離</span>
                         <span class="field-val" id="d-range">50 km</span>
                     </div>
-                    <input type="range" id="s-range" min="1" max="300" value="50">
-                    <input type="number" id="n-range" value="50" min="1" max="500">
+                    <input type="range" id="s-range" min="1" max="300" value="100">
+                    <input type="number" id="n-range" value="100" min="1" max="500">
                 </div>
 
                 <div class="field">
@@ -438,8 +403,8 @@
                         <span>方位角（海の方向）</span>
                         <span class="field-val" id="d-dir">0°</span>
                     </div>
-                    <input type="range" id="s-dir" min="0" max="359" value="0">
-                    <input type="number" id="n-dir" value="0" min="0" max="359">
+                    <input type="range" id="s-dir" min="0" max="359" value="180">
+                    <input type="number" id="n-dir" value="180" min="0" max="359">
                     <div class="compass-wrap">
                         <svg id="compass" width="56" height="56" viewBox="0 0 56 56">
                             <circle cx="28" cy="28" r="26" fill="#1e3a5f" stroke="#2a5080" stroke-width="1.5"/>
@@ -482,8 +447,8 @@
                         <span>レンジ分解能（グリッド距離間隔）</span>
                         <span class="field-val" id="d-rres">10 km</span>
                     </div>
-                    <input type="range" id="s-rres" min="1" max="100" value="10">
-                    <input type="number" id="n-rres" value="10" min="1" max="500">
+                    <input type="range" id="s-rres" min="1" max="100" value="3">
+                    <input type="number" id="n-rres" value="3" min="1" max="500">
                 </div>
 
                 <div class="field-row">
@@ -544,11 +509,11 @@
             </div>
             <div class="sec-body">
                 <div class="info-box" style="margin-bottom:8px">
-                    2台以上が重複する海域を自動検出し、流速推定可能域に矢羽（ダミー）を表示します。
+                    2台以上が重複する海域を自動検出し、協調表示します。
                 </div>
                 <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#90a8c0;cursor:pointer;margin-bottom:5px">
                     <input type="checkbox" id="chk-overlaps" checked onchange="toggleOverlayVis()">
-                    重複域・矢羽を表示
+                    重複域を表示
                 </label>
                 <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#64b5f6;cursor:pointer;font-weight:bold">
                     <input type="checkbox" id="chk-focus" onchange="toggleFocusMode()">
@@ -592,39 +557,7 @@
                 <span class="badge" id="gfw-count">0</span>
             </div>
             <div class="sec-body">
-                <div class="info-box">
-                    Global Fishing Watch API で巻き網（パースセーヌ）等の漁船分布を重ね合わせます。
-                    <a href="https://globalfishingwatch.org/our-apis/" target="_blank" style="color:#64b5f6">APIキー取得 ↗</a>
-                </div>
-                <div class="field">
-                    <div class="field-lbl"><span>APIキー（Bearer token）</span></div>
-                    <input type="text" id="gfw-apikey" placeholder="eyJhbGci..." style="font-size:10px">
-                </div>
-                <div class="field-row">
-                    <div class="field">
-                        <div class="field-lbl"><span>開始日</span></div>
-                        <input type="text" id="gfw-start" value="2024-01-01">
-                    </div>
-                    <div class="field">
-                        <div class="field-lbl"><span>終了日</span></div>
-                        <input type="text" id="gfw-end" value="2024-01-31">
-                    </div>
-                </div>
-                <div class="field">
-                    <div class="field-lbl"><span>旗国コード（空欄=全国）</span></div>
-                    <input type="text" id="gfw-flag" value="JPN" placeholder="JPN / CHN / KOR など" style="text-transform:uppercase">
-                </div>
-                <div class="field">
-                    <div class="field-lbl"><span>ギアタイプ</span></div>
-                    <select id="gfw-gear" class="gear-select">
-                        <option value="purse_seines">巻き網（Purse Seine）</option>
-                        <option value="trawlers">トロール（Trawlers）</option>
-                        <option value="longliners">延縄（Longliners）</option>
-                        <option value="squid_jigger">イカ釣り（Squid Jigger）</option>
-                        <option value="">全ギアタイプ</option>
-                    </select>
-                </div>
-                <button class="btn btn-primary btn-full" onclick="fetchGFW()">漁船データ取得</button>
+                <div class="info-box">静的ファイル（gfw_data.json）から漁船分布データを読み込みます。</div>
                 <button class="btn btn-danger btn-full btn-sm" id="btn-clear-gfw"
                         style="display:none;margin-top:4px" onclick="clearGFW()">漁船レイヤー削除</button>
                 <div id="gfw-status" style="font-size:10px;color:#5070a0;margin-top:5px;line-height:1.5"></div>
@@ -868,11 +801,11 @@ function getGridLines(r) {
 function getForm() {
     return {
         name:      el('f-name').value.trim() || `レーダー${nextNum}`,
-        range:     clamp(parseFloat(el('n-range').value)  || 50,  1, 500),
-        dir:       clamp(parseFloat(el('n-dir').value)    || 0,   0, 359),
+        range:     clamp(parseFloat(el('n-range').value)  || 100, 1, 500),
+        dir:       clamp(parseFloat(el('n-dir').value)    || 180, 0, 359),
         spread:    clamp(parseFloat(el('n-spread').value) || 120, 1, 360),
         beamWidth: clamp(parseFloat(el('n-bwidth').value) || 5,   0.5, 90),
-        rangeRes:  clamp(parseFloat(el('n-rres').value)   || 10,  1, 500),
+        rangeRes:  clamp(parseFloat(el('n-rres').value)   || 3,   1, 500),
         color:     el('f-color').value,
         opacity:   parseInt(el('s-opacity').value) / 100
     };
@@ -1210,7 +1143,7 @@ ${gridKml}
 <kml xmlns="http://www.opengis.net/kml/2.2">
 <Document>
   <name>海洋監視レーダーカバレッジ</name>
-  <description>海洋監視レーダー設置計画ツールで生成</description>
+  <description>水産業分野のための海洋レーダー設置計画ツールで生成</description>
 ${marks}
 </Document>
 </kml>`;
@@ -1687,18 +1620,7 @@ function updateOverlaps() {
                     const leafPoly = L.polygon(lls, focusMode ? focusOverStyle() : normalOverStyle());
                     if (show) leafPoly.addTo(map);
 
-                    // Centroid & barb
-                    const cent = turf.centroid(turf.polygon([ring]));
-                    const [lng, lat] = cent.geometry.coordinates;
-                    const dir = bearingBetween(ri.lat, ri.lng, rj.lat, rj.lng) + 90; // ⊥ to radar pair
-                    const barb = L.marker([lat, lng], {
-                        icon: mkBarbIcon(dir),
-                        interactive: false,
-                        title: `交差域（${ri.name} × ${rj.name}）`
-                    });
-                    if (show) barb.addTo(map);
-
-                    overlaps.push({ poly: leafPoly, barb });
+                    overlaps.push({ poly: leafPoly });
                 }
             } catch (_) { /* geometry edge cases */ }
         }
@@ -1721,10 +1643,8 @@ function toggleOverlayVis() {
     for (const ov of overlaps) {
         if (show) {
             ov.poly.addTo(map);
-            ov.barb.addTo(map);
         } else {
             map.removeLayer(ov.poly);
-            map.removeLayer(ov.barb);
         }
     }
 }
@@ -1769,44 +1689,6 @@ function bearingBetween(lat1, lng1, lat2, lng2) {
 }
 
 // Wind barb icon (SVG) pointing in dirDeg
-function mkBarbIcon(dirDeg) {
-    const rad  = dirDeg * Math.PI / 180;
-    const cx = 16, cy = 16, shaft = 11;
-
-    function pt(dist, angleRad) {
-        return [
-            (cx + dist * Math.sin(angleRad)).toFixed(1),
-            (cy - dist * Math.cos(angleRad)).toFixed(1)
-        ];
-    }
-
-    const [tx, ty] = pt(shaft, rad);           // arrow tip
-    const [bx, by] = pt(-4,   rad);            // tail
-    const perp = rad + Math.PI / 2;
-    const [b1ax, b1ay] = pt(shaft * 0.6, rad); // barb 1 root
-    const [b1bx, b1by] = pt(7, perp + (rad - Math.PI));  // barb 1 tip (relative hack)
-    // Use perpendicular offset for barb tips
-    const barbLen = 7;
-    const br = rad - Math.PI * 0.75; // barb angle
-    const [p1x, p1y] = pt(shaft * 0.65, rad);
-    const [p2x, p2y] = pt(shaft * 0.35, rad);
-    const bex1 = (+p1x + barbLen * Math.sin(br)).toFixed(1);
-    const bey1 = (+p1y - barbLen * Math.cos(br)).toFixed(1);
-    const bex2 = (+p2x + barbLen * 0.75 * Math.sin(br)).toFixed(1);
-    const bey2 = (+p2y - barbLen * 0.75 * Math.cos(br)).toFixed(1);
-
-    const svg = `<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"
-         style="filter:drop-shadow(0 0 3px #000)">
-      <circle cx="16" cy="16" r="14" fill="rgba(5,15,40,.78)" stroke="rgba(255,255,160,.45)" stroke-width="1"/>
-      <line x1="${bx}" y1="${by}" x2="${tx}" y2="${ty}" stroke="#ffef80" stroke-width="1.8" stroke-linecap="round"/>
-      <line x1="${p1x}" y1="${p1y}" x2="${bex1}" y2="${bey1}" stroke="#ffef80" stroke-width="1.4" stroke-linecap="round"/>
-      <line x1="${p2x}" y1="${p2y}" x2="${bex2}" y2="${bey2}" stroke="#ffef80" stroke-width="1.4" stroke-linecap="round"/>
-      <circle cx="${tx}" cy="${ty}" r="2.2" fill="#ffef80"/>
-    </svg>`;
-
-    return L.divIcon({ className: '', html: svg, iconSize: [32, 32], iconAnchor: [16, 16] });
-}
-
 /* ============================================================
    Ocean Current Animation (custom canvas particle system)
    ============================================================ */
@@ -2077,117 +1959,24 @@ const GFW_GEAR_API = {
     squid_jigger: 'SQUID_JIGGER'
 };
 
-async function fetchGFW() {
-    const apiKey    = el('gfw-apikey').value.trim();
-    const startDate = el('gfw-start').value.trim();
-    const endDate   = el('gfw-end').value.trim();
-    const gearType  = el('gfw-gear').value;
-    const flagCode  = el('gfw-flag').value.trim().toUpperCase();
-
-    if (!apiKey) {
-        alert('GFW APIキーを入力してください。\nhttps://globalfishingwatch.org/our-apis/ で無料取得できます。');
-        return;
-    }
-    if (!startDate || !endDate) { alert('開始日・終了日を入力してください'); return; }
-    if (!radars.length) { alert('レーダーを先に設置してください'); return; }
-
+async function loadGFWData() {
     clearGFW();
-    const baseHeaders = { 'Authorization': `Bearer ${apiKey}` };
-    const BASE = 'https://gateway.api.globalfishingwatch.org/v3';
-
+    el('gfw-status').textContent = 'gfw_data.json を読み込み中...';
     try {
-        /* ----------------------------------------------------------
-           Step 1: vessel identity search → get vessel IDs by gear type
-           ---------------------------------------------------------- */
-        el('gfw-status').textContent = '1/2 漁船IDを検索中...';
-        el('gfw-count').textContent  = '…';
-
-        const gearApiVal = gearType ? (GFW_GEAR_API[gearType] || gearType.toUpperCase()) : null;
-
-        let whereClause = gearApiVal
-            ? `combinedSourcesInfo.geartypes.name='${gearApiVal}'`
-            : '';
-        if (flagCode) {
-            whereClause = whereClause
-                ? `${whereClause} AND flag='${flagCode}'`
-                : `flag='${flagCode}'`;
-        }
-
-        const vesselParams = new URLSearchParams({
-            'datasets[0]': 'public-global-vessel-identity:v3.0',
-            limit: 500
-        });
-        if (whereClause) vesselParams.set('where', whereClause);
-
-        const vesselRes = await fetch(`${BASE}/vessels/search?${vesselParams}`, { headers: baseHeaders });
-        if (!vesselRes.ok) {
-            const t = await vesselRes.text();
-            throw new Error(`vessel検索 ${vesselRes.status}: ${t.slice(0, 200)}`);
-        }
-        const vesselData = await vesselRes.json();
-        const vesselTotal = vesselData.total || 0;
-
-        // vessel IDを抽出（combinedSourcesInfo[].vesselId）
-        const vesselIds = [];
-        for (const entry of (vesselData.entries || [])) {
-            for (const csi of (entry.combinedSourcesInfo || [])) {
-                if (csi.vesselId && !vesselIds.includes(csi.vesselId)) {
-                    vesselIds.push(csi.vesselId);
-                }
-            }
-        }
-
-        if (vesselIds.length === 0) {
-            el('gfw-status').textContent = '一致する漁船が見つかりません（ギアタイプ・旗国を確認）';
-            el('gfw-count').textContent  = 0;
+        const res = await fetch('./gfw_data.json');
+        if (!res.ok) {
+            el('gfw-status').textContent = `データファイルが見つかりません (${res.status})`;
             return;
         }
-
-        /* ----------------------------------------------------------
-           Step 2: fishing events for those vessel IDs
-           ---------------------------------------------------------- */
-        el('gfw-status').textContent = `2/2 ${vesselIds.length}隻のイベントを取得中...`;
-
-        // URLが長くなりすぎないよう最大60隻
-        const useIds = vesselIds.slice(0, 60);
-        const evtParams = new URLSearchParams({
-            'datasets[0]':  'public-global-fishing-events:v3.0',
-            'types[0]':     'FISHING',
-            'start-date':   startDate + 'T00:00:00.000Z',
-            'end-date':     endDate   + 'T23:59:59.999Z',
-            limit:          500,
-            offset:         0
-        });
-        useIds.forEach((id, i) => evtParams.append(`vessels[${i}]`, id));
-
-        const evtRes = await fetch(`${BASE}/events?${evtParams}`, { headers: baseHeaders });
-        if (!evtRes.ok) {
-            const t = await evtRes.text();
-            throw new Error(`events取得 ${evtRes.status}: ${t.slice(0, 200)}`);
-        }
-        const evtData = await evtRes.json();
-        const events  = evtData.entries || [];
-
-        /* ----------------------------------------------------------
-           Step 3: client-side bbox filter (radar coverage bounds)
-           ---------------------------------------------------------- */
-        const srcPolys = overlaps.length ? overlaps.map(o => o.poly) : radars.map(r => r.poly);
-        const bounds   = L.featureGroup(srcPolys).getBounds();
-        const filtered = events.filter(e => {
-            const p = e.position;
-            if (!p) return false;
-            return p.lat >= bounds.getSouth() && p.lat <= bounds.getNorth() &&
-                   p.lon >= bounds.getWest()  && p.lon <= bounds.getEast();
-        });
-
-        renderGFWEvents(filtered, gearType, vesselTotal, events.length);
-
-    } catch(err) {
-        el('gfw-status').textContent = `エラー: ${err.message.slice(0, 180)}`;
-        el('gfw-count').textContent  = '!';
-        console.error('GFW fetch:', err);
+        const data = await res.json();
+        const events = data.entries || [];
+        renderGFWEvents(events, '', events.length, events.length);
+    } catch (err) {
+        el('gfw-status').textContent = `読み込みエラー: ${err.message}`;
+        console.error('GFW load:', err);
     }
 }
+const fetchGFW = loadGFWData;
 
 function renderGFWEvents(events, gearType, vesselTotal, rawTotal) {
     const color = GFW_COLORS[gearType] || GFW_COLORS.default;
@@ -2235,6 +2024,7 @@ function clearGFW() {
    Init
    ============================================================ */
 updateDisplays();
+loadGFWData();
 
 </script>
 </body>

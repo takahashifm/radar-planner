@@ -1,0 +1,60 @@
+{
+  "entries": [
+    {
+      "position": { "lat": 35.2, "lon": 141.5 },
+      "vessel": { "name": "第一漁丸", "flag": "JPN" },
+      "gear": "purse_seines",
+      "start": "2023-06-15T08:00:00Z",
+      "end": "2023-06-15T12:30:00Z"
+    },
+    {
+      "position": { "lat": 35.8, "lon": 142.1 },
+      "vessel": { "name": "新丸", "flag": "JPN" },
+      "gear": "trawlers",
+      "start": "2023-06-15T10:00:00Z",
+      "end": "2023-06-15T14:45:00Z"
+    },
+    {
+      "position": { "lat": 36.3, "lon": 141.8 },
+      "vessel": { "name": "豊漁丸", "flag": "JPN" },
+      "gear": "longliners",
+      "start": "2023-06-15T06:00:00Z",
+      "end": "2023-06-15T18:00:00Z"
+    },
+    {
+      "position": { "lat": 35.5, "lon": 142.5 },
+      "vessel": { "name": "海幸丸", "flag": "JPN" },
+      "gear": "squid_jigger",
+      "start": "2023-06-15T19:00:00Z",
+      "end": "2023-06-16T06:00:00Z"
+    },
+    {
+      "position": { "lat": 34.8, "lon": 140.8 },
+      "vessel": { "name": "栄丸", "flag": "JPN" },
+      "gear": "purse_seines",
+      "start": "2023-06-14T12:00:00Z",
+      "end": "2023-06-14T18:00:00Z"
+    },
+    {
+      "position": { "lat": 37.2, "lon": 142.3 },
+      "vessel": { "name": "鶴見丸", "flag": "JPN" },
+      "gear": "trawlers",
+      "start": "2023-06-15T11:00:00Z",
+      "end": "2023-06-15T15:30:00Z"
+    },
+    {
+      "position": { "lat": 36.1, "lon": 140.5 },
+      "vessel": { "name": "大漁丸", "flag": "JPN" },
+      "gear": "longliners",
+      "start": "2023-06-15T07:30:00Z",
+      "end": "2023-06-15T19:30:00Z"
+    },
+    {
+      "position": { "lat": 35.4, "lon": 141.2 },
+      "vessel": { "name": "幸運丸", "flag": "JPN" },
+      "gear": "purse_seines",
+      "start": "2023-06-16T09:00:00Z",
+      "end": "2023-06-16T13:00:00Z"
+    }
+  ]
+}
