@@ -550,17 +550,23 @@
             </div>
         </div>
 
-        <!-- GFW漁船分布 -->
+        <!-- GeoTIFF ラスタデータ -->
         <div class="sec">
-            <div class="sec-hdr">
-                GFW 漁船分布
-                <span class="badge" id="gfw-count">0</span>
-            </div>
+            <div class="sec-hdr">GeoTIFF レイヤー</div>
             <div class="sec-body">
-                <div class="info-box">静的ファイル（gfw_data.json）から漁船分布データを読み込みます。</div>
-                <button class="btn btn-danger btn-full btn-sm" id="btn-clear-gfw"
-                        style="display:none;margin-top:4px" onclick="clearGFW()">漁船レイヤー削除</button>
-                <div id="gfw-status" style="font-size:10px;color:#5070a0;margin-top:5px;line-height:1.5"></div>
+                <div class="info-box">漁船密度ヒートマップなどの GeoTIFF ファイルを読み込みます。</div>
+                <input type="file" id="geotiff-input" accept=".tif,.tiff,.geotiff" style="display:none">
+                <button class="btn btn-primary btn-full" onclick="document.getElementById('geotiff-input').click()">
+                    GeoTIFF を読み込む
+                </button>
+                <button class="btn btn-danger btn-full btn-sm" id="btn-clear-geotiff"
+                        style="display:none;margin-top:4px" onclick="clearGeoTIFF()">レイヤー削除</button>
+                <div class="field" id="geotiff-opacity-field" style="display:none;margin-top:8px">
+                    <div class="field-lbl"><span>透明度</span></div>
+                    <input type="range" id="geotiff-opacity" min="0" max="100" value="70"
+                           oninput="updateGeoTIFFOpacity(this.value)" style="width:100%">
+                </div>
+                <div id="geotiff-status" style="font-size:10px;color:#5070a0;margin-top:5px;line-height:1.5"></div>
             </div>
         </div>
 
@@ -585,6 +591,7 @@
 <div id="map-container">
     <div id="map"></div>
     <div id="mode-badge">クリックでレーダーを設置</div>
+    <div id="cursor-coord" style="position:absolute;bottom:10px;right:10px;background:rgba(0,0,0,0.7);color:#fff;padding:6px 10px;border-radius:3px;font-size:11px;font-family:monospace;z-index:1000">N 00°00' E 000°00'</div>
     <button class="btn btn-secondary btn-sm" id="fit-btn" onclick="fitAll()" style="display:none">
         全体を表示
     </button>
@@ -618,7 +625,7 @@ const AUTO_COLORS = [
 /* ============================================================
    Map
    ============================================================ */
-const map = L.map('map', { center: [43.5, 142.0], zoom: 9 });
+const map = L.map('map', { center: [43.333, 144.5], zoom: 9 });
 
 /* ---- 背景地図タイル定義 ---- */
 const basemapDefs = {
@@ -1941,90 +1948,93 @@ el('s-particle-speed').addEventListener('input', () => {
    GFW Vessel Layer
    ============================================================ */
 
-let gfwMarkers = [];
+/* ============================================================
+   GeoTIFF ラスタレイヤー
+   ============================================================ */
 
-const GFW_COLORS = {
-    purse_seines: '#ff6600',
-    trawlers:     '#cc44ff',
-    longliners:   '#00ccee',
-    squid_jigger: '#ffcc00',
-    default:      '#ffffff'
-};
+let geoTIFFLayer = null;
 
-// GFW gear type → API value mapping (uppercase required)
-const GFW_GEAR_API = {
-    purse_seines: 'PURSE_SEINES',
-    trawlers:     'TRAWLERS',
-    longliners:   'LONGLINERS',
-    squid_jigger: 'SQUID_JIGGER'
-};
+// カーソル座標表示の更新
+map.on('mousemove', function(e) {
+    const lat = e.latlng.lat;
+    const lng = e.latlng.lng;
 
-async function loadGFWData() {
-    clearGFW();
-    el('gfw-status').textContent = 'gfw_data.json を読み込み中...';
+    // 緯度を度分秒に変換
+    const latDeg = Math.floor(lat);
+    const latMin = Math.round((lat - latDeg) * 60);
+    const latDir = lat >= 0 ? 'N' : 'S';
+
+    // 経度を度分秒に変換
+    const lngDeg = Math.floor(Math.abs(lng));
+    const lngMin = Math.round((Math.abs(lng) - lngDeg) * 60);
+    const lngDir = lng >= 0 ? 'E' : 'W';
+
+    const coordText = `${latDir} ${Math.abs(latDeg)}°${latMin}' ${lngDir} ${lngDeg}°${lngMin}'`;
+    el('cursor-coord').textContent = coordText;
+});
+
+// GeoTIFF ファイル入力イベント
+el('geotiff-input').addEventListener('change', async function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    el('geotiff-status').textContent = 'ファイルを読み込み中...';
+
     try {
-        const res = await fetch('./gfw_data.json');
-        if (!res.ok) {
-            el('gfw-status').textContent = `データファイルが見つかりません (${res.status})`;
-            return;
-        }
-        const data = await res.json();
-        const events = data.entries || [];
-        renderGFWEvents(events, '', events.length, events.length);
+        const arrayBuffer = await file.arrayBuffer();
+
+        // GeoTIFFパーサー（簡易版）
+        // 実装には geotiff.js ライブラリが必要
+        const blob = new Blob([arrayBuffer], { type: 'image/tiff' });
+        const url = URL.createObjectURL(blob);
+
+        // ImageOverlay で表示（仮の座標 - 実際の地理参照情報から取得する必要あり）
+        // ここでは日本近海を想定
+        const bounds = L.latLngBounds([[42, 140], [45, 146]]);
+
+        if (geoTIFFLayer) map.removeLayer(geoTIFFLayer);
+
+        geoTIFFLayer = L.imageOverlay(url, bounds, {
+            opacity: 0.7,
+            className: 'geotiff-overlay'
+        }).addTo(map);
+
+        // レイヤー順序を下に
+        geoTIFFLayer.bringToBack();
+
+        el('btn-clear-geotiff').style.display = 'block';
+        el('geotiff-opacity-field').style.display = 'block';
+        el('geotiff-status').textContent = `読み込み完了: ${file.name}`;
+        setStatus(`GeoTIFF読み込み: ${file.name}`);
+
     } catch (err) {
-        el('gfw-status').textContent = `読み込みエラー: ${err.message}`;
-        console.error('GFW load:', err);
+        el('geotiff-status').textContent = `エラー: ${err.message}`;
+        console.error('GeoTIFF load error:', err);
+    }
+});
+
+function updateGeoTIFFOpacity(value) {
+    if (geoTIFFLayer) {
+        geoTIFFLayer.setOpacity(value / 100);
     }
 }
-const fetchGFW = loadGFWData;
 
-function renderGFWEvents(events, gearType, vesselTotal, rawTotal) {
-    const color = GFW_COLORS[gearType] || GFW_COLORS.default;
-
-    for (const evt of events) {
-        const pos = evt.position;
-        if (!pos || pos.lat == null) continue;
-
-        const gearLabel = gearType ? GFW_GEAR_API[gearType] || gearType : '全ギア';
-        const popupHtml = `
-            <b style="color:#e0e8f0">${esc(evt.vessel?.name || '不明')}</b><br>
-            <span style="color:#90a8c0">
-            旗国: ${evt.vessel?.flag || '?'}<br>
-            ギア: ${gearLabel}<br>
-            開始: ${evt.start ? evt.start.slice(0,10) : '?'}<br>
-            終了: ${evt.end   ? evt.end.slice(0,10)   : '?'}
-            </span>`;
-
-        const marker = L.circleMarker([pos.lat, pos.lon], {
-            radius: 5, fillColor: color,
-            color: 'rgba(0,0,0,0.6)', weight: 0.8, fillOpacity: 0.78
-        }).bindPopup(popupHtml, { maxWidth: 220 }).addTo(map);
-
-        gfwMarkers.push(marker);
+function clearGeoTIFF() {
+    if (geoTIFFLayer) {
+        map.removeLayer(geoTIFFLayer);
+        geoTIFFLayer = null;
     }
-
-    el('gfw-count').textContent       = gfwMarkers.length;
-    el('btn-clear-gfw').style.display = gfwMarkers.length ? 'block' : 'none';
-    const label = gearType ? (GFW_GEAR_API[gearType] || gearType) : '全ギア';
-    el('gfw-status').textContent = gfwMarkers.length
-        ? `カバレッジ内 ${gfwMarkers.length}件（全イベント${rawTotal||0}件 / 対象船${vesselTotal||0}隻）`
-        : `カバレッジ内にデータなし（全${rawTotal||0}件取得）`;
-    setStatus(`GFW: カバレッジ内${gfwMarkers.length}件 [${label}]`);
-}
-
-function clearGFW() {
-    for (const m of gfwMarkers) map.removeLayer(m);
-    gfwMarkers.length = 0;
-    el('gfw-count').textContent       = 0;
-    el('btn-clear-gfw').style.display = 'none';
-    el('gfw-status').textContent      = '';
+    el('btn-clear-geotiff').style.display = 'none';
+    el('geotiff-opacity-field').style.display = 'none';
+    el('geotiff-status').textContent = '';
+    el('geotiff-input').value = '';
+    setStatus('GeoTIFFレイヤーを削除しました');
 }
 
 /* ============================================================
    Init
    ============================================================ */
 updateDisplays();
-loadGFWData();
 
 </script>
 </body>
