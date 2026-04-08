@@ -611,6 +611,10 @@
                     </div>
                 </div>
                 <div class="field">
+                    <div class="field-lbl"><span>旗国コード（空欄=全国）</span></div>
+                    <input type="text" id="gfw-flag" value="JPN" placeholder="JPN / CHN / KOR など" style="text-transform:uppercase">
+                </div>
+                <div class="field">
                     <div class="field-lbl"><span>ギアタイプ</span></div>
                     <select id="gfw-gear" class="gear-select">
                         <option value="purse_seines">巻き網（Purse Seine）</option>
@@ -2065,11 +2069,20 @@ const GFW_COLORS = {
     default:      '#ffffff'
 };
 
+// GFW gear type → API value mapping (uppercase required)
+const GFW_GEAR_API = {
+    purse_seines: 'PURSE_SEINES',
+    trawlers:     'TRAWLERS',
+    longliners:   'LONGLINERS',
+    squid_jigger: 'SQUID_JIGGER'
+};
+
 async function fetchGFW() {
     const apiKey    = el('gfw-apikey').value.trim();
     const startDate = el('gfw-start').value.trim();
     const endDate   = el('gfw-end').value.trim();
     const gearType  = el('gfw-gear').value;
+    const flagCode  = el('gfw-flag').value.trim().toUpperCase();
 
     if (!apiKey) {
         alert('GFW APIキーを入力してください。\nhttps://globalfishingwatch.org/our-apis/ で無料取得できます。');
@@ -2079,80 +2092,116 @@ async function fetchGFW() {
     if (!radars.length) { alert('レーダーを先に設置してください'); return; }
 
     clearGFW();
-    el('gfw-status').textContent = '取得中...';
-    el('gfw-count').textContent  = '…';
-
-    // 検索エリア: 重複域があればその範囲、なければ全カバレッジ
-    const srcPolys = overlaps.length ? overlaps.map(o => o.poly) : radars.map(r => r.poly);
-    const bounds   = L.featureGroup(srcPolys).getBounds();
-
-    const geometry = {
-        type: 'Polygon',
-        coordinates: [[
-            [bounds.getWest(),  bounds.getSouth()],
-            [bounds.getEast(),  bounds.getSouth()],
-            [bounds.getEast(),  bounds.getNorth()],
-            [bounds.getWest(),  bounds.getNorth()],
-            [bounds.getWest(),  bounds.getSouth()]
-        ]]
-    };
+    const baseHeaders = { 'Authorization': `Bearer ${apiKey}` };
+    const BASE = 'https://gateway.api.globalfishingwatch.org/v3';
 
     try {
-        const res = await fetch(
-            'https://gateway.api.globalfishingwatch.org/v3/events?limit=200&offset=0',
-            {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${apiKey}`,
-                    'Content-Type':  'application/json'
-                },
-                body: JSON.stringify({
-                    datasets:  ['public-global-fishing-events:v3.0'],
-                    types:     ['FISHING'],
-                    startDate: startDate + 'T00:00:00.000Z',
-                    endDate:   endDate   + 'T23:59:59.999Z',
-                    geometry
-                })
-            }
-        );
+        /* ----------------------------------------------------------
+           Step 1: vessel identity search → get vessel IDs by gear type
+           ---------------------------------------------------------- */
+        el('gfw-status').textContent = '1/2 漁船IDを検索中...';
+        el('gfw-count').textContent  = '…';
 
-        if (!res.ok) {
-            const txt = await res.text();
-            throw new Error(`HTTP ${res.status}: ${txt.slice(0, 250)}`);
+        const gearApiVal = gearType ? (GFW_GEAR_API[gearType] || gearType.toUpperCase()) : null;
+
+        let whereClause = gearApiVal
+            ? `combinedSourcesInfo.geartypes.name='${gearApiVal}'`
+            : '';
+        if (flagCode) {
+            whereClause = whereClause
+                ? `${whereClause} AND flag='${flagCode}'`
+                : `flag='${flagCode}'`;
         }
 
-        const json   = await res.json();
-        const events = json.entries || json.results || [];
+        const vesselParams = new URLSearchParams({
+            'datasets[0]': 'public-global-vessel-identity:v3.0',
+            limit: 500
+        });
+        if (whereClause) vesselParams.set('where', whereClause);
 
-        // クライアント側でギアタイプフィルタ
-        const filtered = gearType
-            ? events.filter(e => {
-                const gt = (e.vessel?.geartype || '').toLowerCase();
-                return gt === gearType || gt.replace(/ /g,'_') === gearType;
-            })
-            : events;
+        const vesselRes = await fetch(`${BASE}/vessels/search?${vesselParams}`, { headers: baseHeaders });
+        if (!vesselRes.ok) {
+            const t = await vesselRes.text();
+            throw new Error(`vessel検索 ${vesselRes.status}: ${t.slice(0, 200)}`);
+        }
+        const vesselData = await vesselRes.json();
+        const vesselTotal = vesselData.total || 0;
 
-        renderGFWEvents(filtered, gearType);
+        // vessel IDを抽出（combinedSourcesInfo[].vesselId）
+        const vesselIds = [];
+        for (const entry of (vesselData.entries || [])) {
+            for (const csi of (entry.combinedSourcesInfo || [])) {
+                if (csi.vesselId && !vesselIds.includes(csi.vesselId)) {
+                    vesselIds.push(csi.vesselId);
+                }
+            }
+        }
+
+        if (vesselIds.length === 0) {
+            el('gfw-status').textContent = '一致する漁船が見つかりません（ギアタイプ・旗国を確認）';
+            el('gfw-count').textContent  = 0;
+            return;
+        }
+
+        /* ----------------------------------------------------------
+           Step 2: fishing events for those vessel IDs
+           ---------------------------------------------------------- */
+        el('gfw-status').textContent = `2/2 ${vesselIds.length}隻のイベントを取得中...`;
+
+        // URLが長くなりすぎないよう最大60隻
+        const useIds = vesselIds.slice(0, 60);
+        const evtParams = new URLSearchParams({
+            'datasets[0]':  'public-global-fishing-events:v3.0',
+            'types[0]':     'FISHING',
+            'start-date':   startDate + 'T00:00:00.000Z',
+            'end-date':     endDate   + 'T23:59:59.999Z',
+            limit:          500,
+            offset:         0
+        });
+        useIds.forEach((id, i) => evtParams.append(`vessels[${i}]`, id));
+
+        const evtRes = await fetch(`${BASE}/events?${evtParams}`, { headers: baseHeaders });
+        if (!evtRes.ok) {
+            const t = await evtRes.text();
+            throw new Error(`events取得 ${evtRes.status}: ${t.slice(0, 200)}`);
+        }
+        const evtData = await evtRes.json();
+        const events  = evtData.entries || [];
+
+        /* ----------------------------------------------------------
+           Step 3: client-side bbox filter (radar coverage bounds)
+           ---------------------------------------------------------- */
+        const srcPolys = overlaps.length ? overlaps.map(o => o.poly) : radars.map(r => r.poly);
+        const bounds   = L.featureGroup(srcPolys).getBounds();
+        const filtered = events.filter(e => {
+            const p = e.position;
+            if (!p) return false;
+            return p.lat >= bounds.getSouth() && p.lat <= bounds.getNorth() &&
+                   p.lon >= bounds.getWest()  && p.lon <= bounds.getEast();
+        });
+
+        renderGFWEvents(filtered, gearType, vesselTotal, events.length);
 
     } catch(err) {
-        el('gfw-status').textContent = `エラー: ${err.message.slice(0, 150)}`;
+        el('gfw-status').textContent = `エラー: ${err.message.slice(0, 180)}`;
         el('gfw-count').textContent  = '!';
         console.error('GFW fetch:', err);
     }
 }
 
-function renderGFWEvents(events, gearType) {
+function renderGFWEvents(events, gearType, vesselTotal, rawTotal) {
     const color = GFW_COLORS[gearType] || GFW_COLORS.default;
 
     for (const evt of events) {
         const pos = evt.position;
         if (!pos || pos.lat == null) continue;
 
+        const gearLabel = gearType ? GFW_GEAR_API[gearType] || gearType : '全ギア';
         const popupHtml = `
             <b style="color:#e0e8f0">${esc(evt.vessel?.name || '不明')}</b><br>
             <span style="color:#90a8c0">
             旗国: ${evt.vessel?.flag || '?'}<br>
-            ギア: ${evt.vessel?.geartype || '?'}<br>
+            ギア: ${gearLabel}<br>
             開始: ${evt.start ? evt.start.slice(0,10) : '?'}<br>
             終了: ${evt.end   ? evt.end.slice(0,10)   : '?'}
             </span>`;
@@ -2165,13 +2214,13 @@ function renderGFWEvents(events, gearType) {
         gfwMarkers.push(marker);
     }
 
-    el('gfw-count').textContent      = gfwMarkers.length;
+    el('gfw-count').textContent       = gfwMarkers.length;
     el('btn-clear-gfw').style.display = gfwMarkers.length ? 'block' : 'none';
-    const label = gearType || '全ギア';
+    const label = gearType ? (GFW_GEAR_API[gearType] || gearType) : '全ギア';
     el('gfw-status').textContent = gfwMarkers.length
-        ? `${gfwMarkers.length}件表示中（${label}）`
-        : 'データなし — 日付やエリアを変更してください';
-    setStatus(`GFW: ${gfwMarkers.length}件の漁業イベントを取得（${label}）`);
+        ? `カバレッジ内 ${gfwMarkers.length}件（全イベント${rawTotal||0}件 / 対象船${vesselTotal||0}隻）`
+        : `カバレッジ内にデータなし（全${rawTotal||0}件取得）`;
+    setStatus(`GFW: カバレッジ内${gfwMarkers.length}件 [${label}]`);
 }
 
 function clearGFW() {
