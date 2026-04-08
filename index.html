@@ -1712,17 +1712,23 @@ class CurrentAnimator {
             throw new Error('Invalid JSON: no entries');
         }
         this._points = jsonData.entries[0].data || [];
+        console.log('Parsed points:', this._points.length, this._points.slice(0, 3));
 
         // bboxを計算
         if (this._points.length === 0) throw new Error('No data points');
         let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
         for (const p of this._points) {
+            if (isNaN(p.lat) || isNaN(p.lon)) {
+                console.error('Invalid point:', p);
+                throw new Error(`Invalid point data: lat=${p.lat}, lon=${p.lon}`);
+            }
             minLat = Math.min(minLat, p.lat);
             maxLat = Math.max(maxLat, p.lat);
             minLon = Math.min(minLon, p.lon);
             maxLon = Math.max(maxLon, p.lon);
         }
         this._bbox = { minLat, maxLat, minLon, maxLon };
+        console.log('BBox:', this._bbox);
     }
 
     _initCanvas() {
@@ -1824,7 +1830,12 @@ class CurrentAnimator {
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
         // 粒子更新・描画
-        for (const p of this.particles) {
+        for (let i = 0; i < this.particles.length; i++) {
+            const p = this.particles[i];
+            if (isNaN(p.lat) || isNaN(p.lon)) {
+                console.error(`Particle ${i} has NaN coordinates:`, p);
+                continue;
+            }
             const { u, v } = this._sampleUV(p.lat, p.lng);
             const speed = Math.sqrt(u * u + v * v);
             const dLat = v * this._speedMul * 0.001;
