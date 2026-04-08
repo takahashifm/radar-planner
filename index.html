@@ -1832,38 +1832,71 @@ class CurrentAnimator {
         // 粒子更新・描画
         for (let i = 0; i < this.particles.length; i++) {
             const p = this.particles[i];
-            if (isNaN(p.lat) || isNaN(p.lon)) {
-                console.error(`Particle ${i} has NaN coordinates:`, p);
-                continue;
+
+            try {
+                if (isNaN(p.lat) || isNaN(p.lon)) {
+                    console.error(`Particle ${i} has NaN coordinates:`, p);
+                    Object.assign(p, this._randParticle());
+                    continue;
+                }
+
+                const uv = this._sampleUV(p.lat, p.lng);
+                let u = uv.u, v = uv.v;
+
+                // u, v が NaN でないか確認
+                if (isNaN(u) || isNaN(v)) {
+                    console.error(`_sampleUV returned NaN for (${p.lat}, ${p.lng}):`, uv);
+                    u = 0;
+                    v = 0;
+                }
+
+                const speed = Math.sqrt(u * u + v * v);
+                const cosLat = Math.cos(p.lat * Math.PI / 180);
+
+                if (isNaN(cosLat) || cosLat === 0) {
+                    console.error(`Invalid cosLat for lat=${p.lat}:`, cosLat);
+                    cosLat = 0.5;
+                }
+
+                const dLat = v * this._speedMul * 0.001;
+                const dLon = u * this._speedMul * 0.001 / cosLat;
+
+                if (isNaN(dLat) || isNaN(dLon)) {
+                    console.error(`NaN displacement: dLat=${dLat}, dLon=${dLon}, u=${u}, v=${v}`);
+                    Object.assign(p, this._randParticle());
+                    continue;
+                }
+
+                p.lat += dLat;
+                p.lon += dLon;
+                p.age += 1;
+
+                // bbox外或いはage超過で再生成
+                if (p.age > this.MAX_AGE || p.lat < this._bbox.minLat || p.lat > this._bbox.maxLat
+                    || p.lon < this._bbox.minLon || p.lon > this._bbox.maxLon) {
+                    Object.assign(p, this._randParticle());
+                    continue;
+                }
+
+                // 表示判定
+                if (!this._visible(p.lat, p.lng)) continue;
+
+                // スクリーン座標に変換
+                if (isNaN(p.lat) || isNaN(p.lon)) {
+                    console.error(`Before latLngToContainerPoint: p=`, p);
+                    continue;
+                }
+                const point = this.map.latLngToContainerPoint([p.lat, p.lon]);
+
+                // Hue色（速度に応じた色変化）
+                const hue = (speed * 100) % 360;
+                const color = `hsl(${hue}, 100%, 50%)`;
+
+                this.ctx.fillStyle = color;
+                this.ctx.fillRect(point.x - 1, point.y - 1, 2, 2);
+            } catch (err) {
+                console.error(`Error in particle loop (${i}):`, err);
             }
-            const { u, v } = this._sampleUV(p.lat, p.lng);
-            const speed = Math.sqrt(u * u + v * v);
-            const dLat = v * this._speedMul * 0.001;
-            const dLon = u * this._speedMul * 0.001 / Math.cos(p.lat * Math.PI / 180);
-
-            p.lat += dLat;
-            p.lon += dLon;
-            p.age += 1;
-
-            // bbox外或いはage超過で再生成
-            if (p.age > this.MAX_AGE || p.lat < this._bbox.minLat || p.lat > this._bbox.maxLat
-                || p.lon < this._bbox.minLon || p.lon > this._bbox.maxLon) {
-                Object.assign(p, this._randParticle());
-                continue;
-            }
-
-            // 表示判定
-            if (!this._visible(p.lat, p.lng)) continue;
-
-            // スクリーン座標に変換
-            const point = this.map.latLngToContainerPoint([p.lat, p.lon]);
-
-            // Hue色（速度に応じた色変化）
-            const hue = (speed * 100) % 360;
-            const color = `hsl(${hue}, 100%, 50%)`;
-
-            this.ctx.fillStyle = color;
-            this.ctx.fillRect(point.x - 1, point.y - 1, 2, 2);
         }
 
         this.animationId = requestAnimationFrame(() => this._loop());
