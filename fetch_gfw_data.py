@@ -3,7 +3,7 @@
 Global Fishing Watch (GFW) データ取得スクリプト
 
 指定エリア・期間・国のデータを取得し、gfw_data.json として保存する。
-最新のGFW API v3に対応（フィッシングイベントAPI）
+GFW API v3 対応（公式ドキュメントに従う）
 """
 
 import os
@@ -33,98 +33,85 @@ OUTPUT_FILE = "gfw_data.json"
 
 
 # ===============================
-# Step 1: 件数確認
+# Step 1: 日本（JPN）の漁船を検索
 # ===============================
-def get_event_count(headers):
-    """フィッシングイベント件数を確認"""
-    print("🔍 Step 1: フィッシングイベント件数を確認中...")
+def search_vessels(headers):
+    """指定国の漁船IDを検索"""
+    print("🔍 Step 1: 漁船を検索中（国: JPN）...")
 
-    # queryパラメータ：タイムスタンプ範囲とBBOXでフィルタ
-    query = {
-        "and": [
-            {
-                "field": "startTime",
-                "value": {"range": [f"{START_DATE}T00:00:00Z", f"{END_DATE}T23:59:59Z"]}
-            },
-            {
-                "field": "latitude",
-                "value": {"range": [BBOX["south"], BBOX["north"]]}
-            },
-            {
-                "field": "longitude",
-                "value": {"range": [BBOX["west"], BBOX["east"]]}
-            }
-        ]
-    }
-
-    params = {
-        "datasets[0]": "public-global-fishing-events:v3.0",
-        "limit": 1,
-        "offset": 0,
-        "query": json.dumps(query)
-    }
-
-    try:
-        resp = requests.get(
-            f"{API_BASE_URL}/events",
-            params=params,
-            headers=headers,
-            timeout=30
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        total = data.get("total", 0)
-        print(f"✓ 取得対象イベント数: {total:,} 件")
-
-        if total > 50000:
-            print(f"⚠️  警告: イベント数が多い ({total:,} 件)")
-            response = input("続行しますか？ (y/n): ")
-            if response.lower() != "y":
-                print("中止しました")
-                sys.exit(0)
-
-        return total, data.get("entries", [])
-    except requests.exceptions.RequestException as e:
-        print(f"❌ API呼び出しエラー: {e}")
-        sys.exit(1)
-
-
-# ===============================
-# Step 2: データ取得
-# ===============================
-def fetch_events(total_count, headers):
-    """全イベントをページングで取得"""
-    print(f"\n📥 Step 2: {total_count:,} 件のデータを取得中...")
-
-    all_events = []
-    page_size = 500  # GFWは1リクエストで最大500件
+    vessel_ids = []
+    limit = 100
     offset = 0
+    max_pages = 5  # ページング制限（過度な取得を防ぐ）
 
-    query = {
-        "and": [
-            {
-                "field": "startTime",
-                "value": {"range": [f"{START_DATE}T00:00:00Z", f"{END_DATE}T23:59:59Z"]}
-            },
-            {
-                "field": "latitude",
-                "value": {"range": [BBOX["south"], BBOX["north"]]}
-            },
-            {
-                "field": "longitude",
-                "value": {"range": [BBOX["west"], BBOX["east"]]}
-            }
-        ]
-    }
-
-    while offset < total_count:
-        print(f"   取得中... {min(offset + page_size, total_count)} / {total_count}", end="\r")
+    for page in range(max_pages):
+        print(f"   ページ {page + 1}/{max_pages}...", end=" ")
 
         params = {
-            "datasets[0]": "public-global-fishing-events:v3.0",
-            "limit": page_size,
-            "offset": offset,
-            "query": json.dumps(query)
+            "query": "*",  # 全漁船検索
+            "datasets[0]": "public-global-vessel-identity:latest",
+            "limit": limit,
+            "offset": offset
+        }
+
+        try:
+            resp = requests.get(
+                f"{API_BASE_URL}/vessels/search",
+                params=params,
+                headers=headers,
+                timeout=30
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            entries = data.get("entries", [])
+
+            if not entries:
+                print("終了")
+                break
+
+            # flag == "JPN" の漁船をフィルタリング
+            for entry in entries:
+                registry_info = entry.get("registryInfo", [])
+                for reg in registry_info:
+                    if reg.get("flag") == FLAG:
+                        combined_sources = entry.get("combinedSourcesInfo", [])
+                        for source in combined_sources:
+                            vessel_id = source.get("vesselId")
+                            if vessel_id and vessel_id not in vessel_ids:
+                                vessel_ids.append(vessel_id)
+
+            count = len([e for e in entries if any(r.get("flag") == FLAG for r in e.get("registryInfo", []))])
+            print(f"{count} 隻")
+
+            offset += limit
+        except requests.exceptions.RequestException as e:
+            print(f"エラー: {e}")
+            break
+
+    print(f"✓ 取得可能なvessel ID: {len(vessel_ids)} 個")
+    return vessel_ids[:50]  # 最大50隻まで取得
+
+
+# ===============================
+# Step 2: 各漁船のフィッシングイベントを取得
+# ===============================
+def fetch_events_for_vessels(vessel_ids, headers):
+    """複数の漁船のフィッシングイベントを取得"""
+    print(f"\n📥 Step 2: {len(vessel_ids)} 隻のフィッシングイベントを取得中...")
+
+    all_events = []
+    event_count = 0
+
+    for idx, vessel_id in enumerate(vessel_ids):
+        print(f"   [{idx + 1}/{len(vessel_ids)}] Vessel ID: {vessel_id[:8]}...", end=" ")
+
+        params = {
+            f"vessels[0]": vessel_id,
+            "datasets[0]": "public-global-fishing-events:latest",
+            "start-date": START_DATE,
+            "end-date": END_DATE,
+            "limit": 100,
+            "offset": 0
         }
 
         try:
@@ -132,22 +119,28 @@ def fetch_events(total_count, headers):
                 f"{API_BASE_URL}/events",
                 params=params,
                 headers=headers,
-                timeout=60
+                timeout=30
             )
             resp.raise_for_status()
             data = resp.json()
             events = data.get("entries", [])
 
-            if not events:
-                break
+            # BBOX フィルタリング（クライアント側）
+            filtered = [
+                e for e in events
+                if BBOX["south"] <= e.get("position", {}).get("lat", 0) <= BBOX["north"]
+                and BBOX["west"] <= e.get("position", {}).get("lon", 0) <= BBOX["east"]
+            ]
 
-            all_events.extend(events)
-            offset += page_size
+            all_events.extend(filtered)
+            event_count += len(filtered)
+            print(f"{len(filtered)} 件")
+
         except requests.exceptions.RequestException as e:
-            print(f"❌ API呼び出しエラー (offset={offset}): {e}")
-            sys.exit(1)
+            print(f"エラー: {e}")
+            continue
 
-    print(f"   ✓ {len(all_events):,} 件を取得しました        ")
+    print(f"✓ 合計 {event_count:,} 件のイベントを取得しました")
     return all_events
 
 
@@ -161,26 +154,24 @@ def convert_and_save(events):
     # renderGFWEvents() が期待するフォーマットに変換
     entries = []
     for evt in events:
-        # フィッシングイベント API のレスポンス形式
-        # https://github.com/GlobalFishingWatch/gfw-api-docs
         position = evt.get("position", {})
         vessel = evt.get("vessel", {})
 
         entry = {
             "position": {
-                "lat": position.get("latitude", position.get("lat")),
-                "lon": position.get("longitude", position.get("lon")),
+                "lat": position.get("lat"),
+                "lon": position.get("lon"),
             },
             "vessel": {
                 "name": vessel.get("name", "Unknown"),
-                "flag": vessel.get("flag", ""),
+                "flag": vessel.get("ssvid", ""),  # SSVID または MMSIを使用
             },
-            "gear": evt.get("type", ""),  # FISHING / PORTING / LOITERING など
-            "start": evt.get("startTime", ""),
-            "end": evt.get("endTime", ""),
+            "gear": evt.get("type", "fishing"),  # type: fishing, porting, loitering など
+            "start": evt.get("start", ""),
+            "end": evt.get("end", ""),
         }
 
-        # 不要なNoneフィールドをフィルタ
+        # 有効な位置情報があるかチェック
         if entry["position"]["lat"] is not None and entry["position"]["lon"] is not None:
             entries.append(entry)
 
@@ -213,21 +204,23 @@ def main():
 
     headers = {"Authorization": f"Bearer {API_KEY}"}
 
-    total, first_page = get_event_count(headers)
-    if total > 0:
-        events = first_page.copy()  # 最初のページはすでに取得済み
-        if total > 1:
-            events.extend(fetch_events(total - 1, headers))
-        convert_and_save(events)
-    else:
-        print("⚠️  該当するイベントが見つかりません")
-        output_data = {"entries": []}
-        with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-            json.dump(output_data, f, ensure_ascii=False, indent=2)
+    try:
+        vessel_ids = search_vessels(headers)
+        if vessel_ids:
+            events = fetch_events_for_vessels(vessel_ids, headers)
+            convert_and_save(events)
+        else:
+            print("⚠️  該当する漁船が見つかりません")
+            output_data = {"entries": []}
+            with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+                json.dump(output_data, f, ensure_ascii=False, indent=2)
 
-    print("\n" + "=" * 60)
-    print("✅ 完了しました！")
-    print("=" * 60)
+        print("\n" + "=" * 60)
+        print("✅ 完了しました！")
+        print("=" * 60)
+    except KeyboardInterrupt:
+        print("\n\n⚠️  ユーザーが中断しました")
+        sys.exit(0)
 
 
 if __name__ == "__main__":

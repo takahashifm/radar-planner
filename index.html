@@ -522,54 +522,6 @@
             </div>
         </div>
 
-        <!-- 海流アニメーション -->
-        <div class="sec">
-            <div class="sec-hdr">
-                海流アニメーション
-                <span id="current-badge" class="badge" style="display:none">稼働中</span>
-            </div>
-            <div class="sec-body">
-                <div class="info-box">OSCAR/earth.nullschool形式JSON（U・V成分）またはデモデータ。重複域のみに粒子を表示できます。</div>
-                <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#90a8c0;cursor:pointer;margin-bottom:7px">
-                    <input type="checkbox" id="chk-current-mask" checked onchange="onMaskToggle()">
-                    重複カバレッジ域のみ表示
-                </label>
-                <div class="field" style="margin-bottom:8px">
-                    <div class="field-lbl">
-                        <span>粒子速度</span>
-                        <span class="field-val" id="d-particle-speed">1.0×</span>
-                    </div>
-                    <input type="range" id="s-particle-speed" min="0.2" max="5" step="0.2" value="1">
-                </div>
-                <div class="btn-group">
-                    <button class="btn btn-secondary" onclick="loadCurrentFile()">JSON ロード</button>
-                    <button class="btn btn-secondary" onclick="loadDemoCurrent()">デモ流速</button>
-                </div>
-                <button class="btn btn-danger btn-full btn-sm" id="btn-clear-current"
-                        style="display:none;margin-top:5px" onclick="clearCurrentLayer()">海流レイヤー削除</button>
-            </div>
-        </div>
-
-        <!-- GeoTIFF ラスタデータ -->
-        <div class="sec">
-            <div class="sec-hdr">GeoTIFF レイヤー</div>
-            <div class="sec-body">
-                <div class="info-box">漁船密度ヒートマップなどの GeoTIFF ファイルを読み込みます。</div>
-                <input type="file" id="geotiff-input" accept=".tif,.tiff,.geotiff" style="display:none">
-                <button class="btn btn-primary btn-full" onclick="document.getElementById('geotiff-input').click()">
-                    GeoTIFF を読み込む
-                </button>
-                <button class="btn btn-danger btn-full btn-sm" id="btn-clear-geotiff"
-                        style="display:none;margin-top:4px" onclick="clearGeoTIFF()">レイヤー削除</button>
-                <div class="field" id="geotiff-opacity-field" style="display:none;margin-top:8px">
-                    <div class="field-lbl"><span>透明度</span></div>
-                    <input type="range" id="geotiff-opacity" min="0" max="100" value="70"
-                           oninput="updateGeoTIFFOpacity(this.value)" style="width:100%">
-                </div>
-                <div id="geotiff-status" style="font-size:10px;color:#5070a0;margin-top:5px;line-height:1.5"></div>
-            </div>
-        </div>
-
         <!-- エクスポート -->
         <div class="sec">
             <div class="sec-hdr">エクスポート</div>
@@ -611,7 +563,7 @@
    State
    ============================================================ */
 const radars   = [];
-const overlaps = [];   // { poly: L.polygon, barb: L.marker }
+const overlaps = [];   // { poly: L.polygon }
 let selectedId = null;
 let nextId     = 1;
 let nextNum    = 1;
@@ -1588,13 +1540,12 @@ function restoreRadar(d) {
 }
 
 /* ============================================================
-   Overlap detection & wind barbs
+   Overlap detection
    ============================================================ */
 
 function clearOverlaps() {
     for (const ov of overlaps) {
         if (ov.poly) map.removeLayer(ov.poly);
-        if (ov.barb) map.removeLayer(ov.barb);
     }
     overlaps.length = 0;
 }
@@ -1635,14 +1586,8 @@ function updateOverlaps() {
 
     el('overlap-count').textContent = overlaps.length;
     setStatus(overlaps.length
-        ? `重複域 ${overlaps.length}箇所を検出しました（流速推定可能域）`
+        ? `重複域 ${overlaps.length}箇所を検出しました`
         : '重複域なし');
-
-    // 海流アニメーターのマスクを更新
-    if (currentAnimator) {
-        const maskOn = el('chk-current-mask')?.checked ?? true;
-        currentAnimator.updateMask(overlaps.map(ov => ov.poly), maskOn);
-    }
 }
 
 function toggleOverlayVis() {
@@ -1695,276 +1640,17 @@ function bearingBetween(lat1, lng1, lat2, lng2) {
     return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 }
 
-// Wind barb icon (SVG) pointing in dirDeg
-/* ============================================================
-   Ocean Current Animation (custom canvas particle system)
-   ============================================================ */
-
-let currentAnimator = null;
-let currentData     = null;
-
-class CurrentAnimator {
-    constructor(map) {
-        this._map          = map;
-        this._canvas       = null;
-        this._ctx          = null;
-        this._particles    = [];
-        this._uGrid        = null;
-        this._vGrid        = null;
-        this._header       = null;
-        this._animId       = null;
-        this._overlapPolys = [];
-        this._maskEnabled  = true;
-    }
-
-    start(data, overlapPolys, maskEnabled) {
-        this.stop();
-        this._parseData(data);
-        this._overlapPolys = overlapPolys || [];
-        this._maskEnabled  = maskEnabled !== false;
-        this._initCanvas();
-        this._initParticles(2800);
-        this._loop();
-    }
-
-    _parseData(data) {
-        const arr = Array.isArray(data) ? data : [data];
-        const uC = arr.find(d => d.header && d.header.parameterNumber === 2);
-        const vC = arr.find(d => d.header && d.header.parameterNumber === 3);
-        if (!uC || !vC) throw new Error('U/Vコンポーネント(parameterNumber 2,3)が見つかりません');
-        this._header = uC.header;
-        this._uGrid  = uC.data;
-        this._vGrid  = vC.data;
-    }
-
-    _initCanvas() {
-        const c = document.createElement('canvas');
-        Object.assign(c.style, {
-            position: 'absolute', top: '0', left: '0',
-            width: '100%', height: '100%',
-            zIndex: '500', pointerEvents: 'none'
-        });
-        const sz = this._map.getSize();
-        c.width = sz.x; c.height = sz.y;
-        this._map.getContainer().appendChild(c);
-        this._canvas = c;
-        this._ctx    = c.getContext('2d');
-    }
-
-    _randParticle() {
-        const h = this._header;
-        return {
-            lng: h.lo1 + Math.random() * (h.lo2 - h.lo1),
-            lat: h.la2 + Math.random() * (h.la1 - h.la2),
-            age: Math.floor(Math.random() * 120)
-        };
-    }
-
-    _initParticles(n) {
-        this._particles = Array.from({ length: n }, () => this._randParticle());
-    }
-
-    _sampleUV(lat, lng) {
-        const h = this._header;
-        const ix = (lng - h.lo1) / h.dx;
-        const iy = (h.la1 - lat) / h.dy;
-        const x0 = Math.floor(ix), y0 = Math.floor(iy);
-        const x1 = x0 + 1,        y1 = y0 + 1;
-        if (x0 < 0 || y0 < 0 || x1 >= h.nx || y1 >= h.ny) return null;
-        const fx = ix - x0, fy = iy - y0;
-        const G  = (x, y) => y * h.nx + x;
-        const u  = this._uGrid[G(x0,y0)]*(1-fx)*(1-fy) + this._uGrid[G(x1,y0)]*fx*(1-fy)
-                 + this._uGrid[G(x0,y1)]*(1-fx)*fy     + this._uGrid[G(x1,y1)]*fx*fy;
-        const v  = this._vGrid[G(x0,y0)]*(1-fx)*(1-fy) + this._vGrid[G(x1,y0)]*fx*(1-fy)
-                 + this._vGrid[G(x0,y1)]*(1-fx)*fy     + this._vGrid[G(x1,y1)]*fx*fy;
-        return [u, v];
-    }
-
-    // Ray-casting point-in-polygon
-    _pip(lat, lng, leafPoly) {
-        let rings = leafPoly.getLatLngs();
-        if (rings.length && Array.isArray(rings[0])) rings = rings[0];
-        let inside = false;
-        for (let i = 0, j = rings.length - 1; i < rings.length; j = i++) {
-            const xi = rings[i].lng, yi = rings[i].lat;
-            const xj = rings[j].lng, yj = rings[j].lat;
-            if (((yi > lat) !== (yj > lat)) &&
-                (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi))
-                inside = !inside;
-        }
-        return inside;
-    }
-
-    _visible(lat, lng) {
-        if (!this._maskEnabled || this._overlapPolys.length === 0) return true;
-        return this._overlapPolys.some(p => this._pip(lat, lng, p));
-    }
-
-    _loop() {
-        if (!this._canvas) return;
-        this._animId = requestAnimationFrame(() => this._loop());
-
-        const map = this._map;
-        const sz  = map.getSize();
-        const c   = this._canvas;
-        if (c.width !== sz.x || c.height !== sz.y) { c.width = sz.x; c.height = sz.y; }
-
-        const ctx = this._ctx;
-        ctx.globalCompositeOperation = 'destination-out';
-        ctx.fillStyle = 'rgba(0,0,0,0.035)';
-        ctx.fillRect(0, 0, c.width, c.height);
-        ctx.globalCompositeOperation = 'source-over';
-
-        const speed  = parseFloat(el('s-particle-speed')?.value || 1);
-        const scale  = 0.00035 * speed;
-        const maxAge = 130;
-
-        for (const p of this._particles) {
-            p.age++;
-            if (p.age > maxAge) {
-                const n = this._randParticle();
-                p.lat = n.lat; p.lng = n.lng; p.age = 0;
-                continue;
-            }
-            const uv = this._sampleUV(p.lat, p.lng);
-            if (!uv) { p.age = maxAge; continue; }
-            const [u, v] = uv;
-            const nLng = p.lng + u * scale;
-            const nLat = p.lat + v * scale;
-
-            if (this._visible(p.lat, p.lng)) {
-                const pt1 = map.latLngToContainerPoint([p.lat, p.lng]);
-                const pt2 = map.latLngToContainerPoint([nLat, nLng]);
-                const spd  = Math.sqrt(u*u + v*v);
-                const hue  = Math.max(0, 210 - spd * 80);   // blue→cyan→green→yellow
-                const alpha = Math.max(0.12, 0.72 * (1 - p.age / maxAge));
-                ctx.beginPath();
-                ctx.strokeStyle = `hsla(${hue},100%,65%,${alpha.toFixed(2)})`;
-                ctx.lineWidth = 1.4;
-                ctx.moveTo(pt1.x, pt1.y);
-                ctx.lineTo(pt2.x, pt2.y);
-                ctx.stroke();
-            }
-            p.lat = nLat; p.lng = nLng;
-        }
-    }
-
-    updateMask(overlapPolys, maskEnabled) {
-        this._overlapPolys = overlapPolys;
-        this._maskEnabled  = maskEnabled;
-    }
-
-    stop() {
-        if (this._animId) { cancelAnimationFrame(this._animId); this._animId = null; }
-        if (this._canvas) { this._canvas.remove(); this._canvas = null; }
-        this._ctx = null;
-    }
-}
-
-/* 現在の地図ビューをカバーするデモ流速データ（渦 ＋ 背景流）を生成 */
-function buildDemoCurrentData() {
-    const center = map.getCenter();
-    const bounds = map.getBounds();
-    const res = 0.05;  // ~5.5km
-    const lo1 = Math.floor(bounds.getWest()  / res) * res - res;
-    const lo2 = Math.ceil (bounds.getEast()  / res) * res + res;
-    const la1 = Math.ceil (bounds.getNorth() / res) * res + res;
-    const la2 = Math.floor(bounds.getSouth() / res) * res - res;
-    const nx  = Math.max(2, Math.round((lo2 - lo1) / res) + 1);
-    const ny  = Math.max(2, Math.round((la1 - la2) / res) + 1);
-
-    const uD = [], vD = [];
-    for (let iy = 0; iy < ny; iy++) {
-        const lat = la1 - iy * res;
-        for (let ix = 0; ix < nx; ix++) {
-            const lng = lo1 + ix * res;
-            const dx = lng - center.lng, dy = lat - center.lat;
-            const r  = Math.sqrt(dx*dx + dy*dy);
-            const s  = 0.6 * Math.exp(-r * 2.0);
-            uD.push(+(-dy * s + 0.08).toFixed(4));
-            vD.push(+( dx * s + 0.04).toFixed(4));
-        }
-    }
-    const hdr = { parameterCategory: 2, lo1, lo2, la1, la2, dx: res, dy: res, nx, ny };
-    return [
-        { header: { ...hdr, parameterNumber: 2, parameterUnit: 'm.s-1' }, data: uD },
-        { header: { ...hdr, parameterNumber: 3, parameterUnit: 'm.s-1' }, data: vD }
-    ];
-}
-
-function loadDemoCurrent() {
-    const data = buildDemoCurrentData();
-    applyCurrentLayer(data);
-    setStatus('デモ海流データ（渦＋背景流）を表示中');
-}
-
-function loadCurrentFile() {
-    const inp = document.createElement('input');
-    inp.type = 'file'; inp.accept = '.json';
-    inp.onchange = e => {
-        const f = e.target.files[0]; if (!f) return;
-        const r = new FileReader();
-        r.onload = ev => {
-            try {
-                applyCurrentLayer(JSON.parse(ev.target.result));
-                setStatus(`海流データ読み込み完了: ${f.name}`);
-            } catch(err) { alert('読み込みエラー: ' + err.message); }
-        };
-        r.readAsText(f);
-    };
-    inp.click();
-}
-
-function applyCurrentLayer(data) {
-    clearCurrentLayer();
-    currentData = data;
-    const maskOn      = el('chk-current-mask')?.checked ?? true;
-    const overlapPolys = maskOn ? overlaps.map(ov => ov.poly) : [];
-    currentAnimator = new CurrentAnimator(map);
-    currentAnimator.start(data, overlapPolys, maskOn);
-    el('btn-clear-current').style.display = 'block';
-    el('current-badge').style.display     = '';
-}
-
-function clearCurrentLayer() {
-    if (currentAnimator) { currentAnimator.stop(); currentAnimator = null; }
-    currentData = null;
-    el('btn-clear-current').style.display = 'none';
-    el('current-badge').style.display     = 'none';
-}
-
-function onMaskToggle() {
-    if (!currentAnimator) return;
-    const maskOn = el('chk-current-mask').checked;
-    currentAnimator.updateMask(overlaps.map(ov => ov.poly), maskOn);
-}
-
-el('s-particle-speed').addEventListener('input', () => {
-    el('d-particle-speed').textContent =
-        parseFloat(el('s-particle-speed').value).toFixed(1) + '×';
-});
-
-/* ============================================================
-   GFW Vessel Layer
-   ============================================================ */
-
-/* ============================================================
-   GeoTIFF ラスタレイヤー
-   ============================================================ */
-
-let geoTIFFLayer = null;
-
-// カーソル座標表示の更新
+// Cursor coordinates display
 map.on('mousemove', function(e) {
     const lat = e.latlng.lat;
     const lng = e.latlng.lng;
 
-    // 緯度を度分秒に変換
+    // 緯度を度分に変換
     const latDeg = Math.floor(lat);
     const latMin = Math.round((lat - latDeg) * 60);
     const latDir = lat >= 0 ? 'N' : 'S';
 
-    // 経度を度分秒に変換
+    // 経度を度分に変換
     const lngDeg = Math.floor(Math.abs(lng));
     const lngMin = Math.round((Math.abs(lng) - lngDeg) * 60);
     const lngDir = lng >= 0 ? 'E' : 'W';
@@ -1972,64 +1658,6 @@ map.on('mousemove', function(e) {
     const coordText = `${latDir} ${Math.abs(latDeg)}°${latMin}' ${lngDir} ${lngDeg}°${lngMin}'`;
     el('cursor-coord').textContent = coordText;
 });
-
-// GeoTIFF ファイル入力イベント
-el('geotiff-input').addEventListener('change', async function(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    el('geotiff-status').textContent = 'ファイルを読み込み中...';
-
-    try {
-        const arrayBuffer = await file.arrayBuffer();
-
-        // GeoTIFFパーサー（簡易版）
-        // 実装には geotiff.js ライブラリが必要
-        const blob = new Blob([arrayBuffer], { type: 'image/tiff' });
-        const url = URL.createObjectURL(blob);
-
-        // ImageOverlay で表示（仮の座標 - 実際の地理参照情報から取得する必要あり）
-        // ここでは日本近海を想定
-        const bounds = L.latLngBounds([[42, 140], [45, 146]]);
-
-        if (geoTIFFLayer) map.removeLayer(geoTIFFLayer);
-
-        geoTIFFLayer = L.imageOverlay(url, bounds, {
-            opacity: 0.7,
-            className: 'geotiff-overlay'
-        }).addTo(map);
-
-        // レイヤー順序を下に
-        geoTIFFLayer.bringToBack();
-
-        el('btn-clear-geotiff').style.display = 'block';
-        el('geotiff-opacity-field').style.display = 'block';
-        el('geotiff-status').textContent = `読み込み完了: ${file.name}`;
-        setStatus(`GeoTIFF読み込み: ${file.name}`);
-
-    } catch (err) {
-        el('geotiff-status').textContent = `エラー: ${err.message}`;
-        console.error('GeoTIFF load error:', err);
-    }
-});
-
-function updateGeoTIFFOpacity(value) {
-    if (geoTIFFLayer) {
-        geoTIFFLayer.setOpacity(value / 100);
-    }
-}
-
-function clearGeoTIFF() {
-    if (geoTIFFLayer) {
-        map.removeLayer(geoTIFFLayer);
-        geoTIFFLayer = null;
-    }
-    el('btn-clear-geotiff').style.display = 'none';
-    el('geotiff-opacity-field').style.display = 'none';
-    el('geotiff-status').textContent = '';
-    el('geotiff-input').value = '';
-    setStatus('GeoTIFFレイヤーを削除しました');
-}
 
 /* ============================================================
    Init
