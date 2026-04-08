@@ -522,6 +522,31 @@
             </div>
         </div>
 
+        <!-- 海流アニメーション -->
+        <div class="sec">
+            <div class="sec-hdr">
+                海流アニメーション
+                <span id="current-badge" class="badge" style="display:none">稼働中</span>
+            </div>
+            <div class="sec-body">
+                <div class="info-box">current_data.json形式（lat/lon/u/v点群）を読み込みます。</div>
+                <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin-bottom:8px">
+                    <input type="checkbox" id="chk-current-mask" checked onchange="onMaskToggle()">
+                    重複カバレッジ域のみ表示
+                </label>
+                <div class="field" style="margin-bottom:8px">
+                    <div class="field-lbl">
+                        <span>粒子速度</span>
+                        <span class="field-val" id="d-particle-speed">1.0×</span>
+                    </div>
+                    <input type="range" id="s-particle-speed" min="0.2" max="5" step="0.2" value="1">
+                </div>
+                <button class="btn btn-secondary btn-full" onclick="loadCurrentFile()">JSON ロード</button>
+                <button class="btn btn-danger btn-full btn-sm" id="btn-clear-current"
+                        style="display:none;margin-top:5px" onclick="clearCurrentLayer()">海流レイヤー削除</button>
+            </div>
+        </div>
+
         <!-- エクスポート -->
         <div class="sec">
             <div class="sec-hdr">エクスポート</div>
@@ -568,6 +593,8 @@ let selectedId = null;
 let nextId     = 1;
 let nextNum    = 1;
 let focusMode  = false; // true = 重複域のみ表示
+let currentAnimator = null;
+let currentData     = null;
 
 const AUTO_COLORS = [
     '#ff6600','#0088ff','#00cc55','#cc44ff',
@@ -1588,6 +1615,12 @@ function updateOverlaps() {
     setStatus(overlaps.length
         ? `重複域 ${overlaps.length}箇所を検出しました`
         : '重複域なし');
+
+    // 海流アニメーターのマスクを更新
+    if (currentAnimator) {
+        const maskOn = el('chk-current-mask')?.checked ?? true;
+        currentAnimator.updateMask(overlaps.map(ov => ov.poly), maskOn);
+    }
 }
 
 function toggleOverlayVis() {
@@ -1640,6 +1673,266 @@ function bearingBetween(lat1, lng1, lat2, lng2) {
     return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 }
 
+/* ============================================================
+   Ocean Current Animation (新フォーマット対応)
+   ============================================================ */
+class CurrentAnimator {
+    constructor(map) {
+        this.map = map;
+        this.canvas = null;
+        this.ctx = null;
+        this.particles = [];
+        this.animationId = null;
+
+        this._points = [];
+        this._bbox = null;
+        this._overlapPolys = [];
+        this._maskEnabled = true;
+        this._speedMul = 1.0;
+
+        this.PARTICLE_COUNT = 2800;
+        this.LINE_WIDTH = 1;
+        this.FADE_OPACITY = 0.6;
+        this.MAX_AGE = 120;
+    }
+
+    start(jsonData, overlapPolys, maskEnabled) {
+        this._parseData(jsonData);
+        this._overlapPolys = overlapPolys;
+        this._maskEnabled = maskEnabled;
+
+        this._initCanvas();
+        this._initParticles(this.PARTICLE_COUNT);
+        this._loop();
+    }
+
+    _parseData(jsonData) {
+        // current_data.json フォーマット: { entries: [{ time, data: [{lat,lon,u,v}] }] }
+        if (!jsonData.entries || jsonData.entries.length === 0) {
+            throw new Error('Invalid JSON: no entries');
+        }
+        this._points = jsonData.entries[0].data || [];
+
+        // bboxを計算
+        if (this._points.length === 0) throw new Error('No data points');
+        let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
+        for (const p of this._points) {
+            minLat = Math.min(minLat, p.lat);
+            maxLat = Math.max(maxLat, p.lat);
+            minLon = Math.min(minLon, p.lon);
+            maxLon = Math.max(maxLon, p.lon);
+        }
+        this._bbox = { minLat, maxLat, minLon, maxLon };
+    }
+
+    _initCanvas() {
+        if (this.canvas) this.map.getContainer().removeChild(this.canvas);
+
+        const container = this.map.getContainer();
+        this.canvas = document.createElement('canvas');
+        this.canvas.width = container.clientWidth;
+        this.canvas.height = container.clientHeight;
+        this.canvas.style.position = 'absolute';
+        this.canvas.style.top = '0';
+        this.canvas.style.left = '0';
+        this.canvas.style.pointerEvents = 'none';
+        this.canvas.style.zIndex = '200';
+        container.appendChild(this.canvas);
+
+        this.ctx = this.canvas.getContext('2d');
+
+        // リサイズ対応
+        this.map.on('resize', () => {
+            this.canvas.width = container.clientWidth;
+            this.canvas.height = container.clientHeight;
+        });
+    }
+
+    _randParticle() {
+        const { minLat, maxLat, minLon, maxLon } = this._bbox;
+        return {
+            lat: minLat + Math.random() * (maxLat - minLat),
+            lon: minLon + Math.random() * (maxLon - minLon),
+            age: 0
+        };
+    }
+
+    _initParticles(count) {
+        this.particles = [];
+        for (let i = 0; i < count; i++) {
+            this.particles.push(this._randParticle());
+        }
+    }
+
+    _sampleUV(lat, lng) {
+        // 逆距離加重補間: 最近傍4点を使用
+        const distances = this._points.map((p, i) => ({
+            idx: i,
+            dist: Math.pow(lat - p.lat, 2) + Math.pow(lng - p.lon, 2)
+        }));
+        distances.sort((a, b) => a.dist - b.dist);
+
+        const nearestN = Math.min(4, this._points.length);
+        let wSum = 0, uSum = 0, vSum = 0;
+
+        for (let i = 0; i < nearestN; i++) {
+            const d = Math.sqrt(distances[i].dist);
+            if (d < 0.0001) {
+                const p = this._points[distances[i].idx];
+                return { u: p.u, v: p.v };
+            }
+            const w = 1 / d;
+            const p = this._points[distances[i].idx];
+            wSum += w;
+            uSum += w * p.u;
+            vSum += w * p.v;
+        }
+
+        return { u: uSum / wSum, v: vSum / wSum };
+    }
+
+    _pip(lat, lng, leafPoly) {
+        // Point-in-polygon: レイキャスティング
+        const rings = leafPoly._latlngs;
+        let inside = false;
+
+        for (let r = 0; r < rings.length; r++) {
+            const ring = rings[r];
+            for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+                const xi = ring[i].lat, yi = ring[i].lng;
+                const xj = ring[j].lat, yj = ring[j].lng;
+
+                const intersect = ((yi > lng) !== (yj > lng))
+                    && (lat < (xj - xi) * (lng - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+            }
+        }
+        return inside;
+    }
+
+    _visible(lat, lng) {
+        if (!this._maskEnabled) return true;
+        for (const poly of this._overlapPolys) {
+            if (this._pip(lat, lng, poly)) return true;
+        }
+        return false;
+    }
+
+    _loop() {
+        // Canvas初期化
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // 粒子更新・描画
+        for (const p of this.particles) {
+            const { u, v } = this._sampleUV(p.lat, p.lng);
+            const speed = Math.sqrt(u * u + v * v);
+            const dLat = v * this._speedMul * 0.001;
+            const dLon = u * this._speedMul * 0.001 / Math.cos(p.lat * Math.PI / 180);
+
+            p.lat += dLat;
+            p.lon += dLon;
+            p.age += 1;
+
+            // bbox外或いはage超過で再生成
+            if (p.age > this.MAX_AGE || p.lat < this._bbox.minLat || p.lat > this._bbox.maxLat
+                || p.lon < this._bbox.minLon || p.lon > this._bbox.maxLon) {
+                Object.assign(p, this._randParticle());
+                continue;
+            }
+
+            // 表示判定
+            if (!this._visible(p.lat, p.lng)) continue;
+
+            // スクリーン座標に変換
+            const point = this.map.latLngToContainerPoint([p.lat, p.lon]);
+
+            // Hue色（速度に応じた色変化）
+            const hue = (speed * 100) % 360;
+            const color = `hsl(${hue}, 100%, 50%)`;
+
+            this.ctx.fillStyle = color;
+            this.ctx.fillRect(point.x - 1, point.y - 1, 2, 2);
+        }
+
+        this.animationId = requestAnimationFrame(() => this._loop());
+    }
+
+    updateMask(overlapPolys, maskEnabled) {
+        this._overlapPolys = overlapPolys;
+        this._maskEnabled = maskEnabled;
+    }
+
+    setSpeed(multiplier) {
+        this._speedMul = multiplier;
+    }
+
+    stop() {
+        if (this.animationId) cancelAnimationFrame(this.animationId);
+        if (this.canvas && this.canvas.parentNode) {
+            this.map.getContainer().removeChild(this.canvas);
+        }
+    }
+}
+
+/* ============================================================
+   Current Layer Control Functions
+   ============================================================ */
+
+function loadCurrentFile() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+            try {
+                currentData = JSON.parse(ev.target.result);
+                startCurrentAnimator();
+            } catch (err) {
+                alert('読み込みエラー: ' + err.message);
+            }
+        };
+        reader.readAsText(file);
+    };
+    input.click();
+}
+
+function startCurrentAnimator() {
+    if (currentAnimator) currentAnimator.stop();
+    currentAnimator = new CurrentAnimator(map);
+    const maskOn = el('chk-current-mask').checked;
+    try {
+        currentAnimator.start(currentData, overlaps.map(ov => ov.poly), maskOn);
+        el('current-badge').style.display = '';
+        el('btn-clear-current').style.display = '';
+        setStatus('海流アニメーション開始');
+    } catch (err) {
+        alert('アニメーション開始エラー: ' + err.message);
+        currentAnimator = null;
+    }
+}
+
+function clearCurrentLayer() {
+    if (currentAnimator) {
+        currentAnimator.stop();
+        currentAnimator = null;
+    }
+    currentData = null;
+    el('current-badge').style.display = 'none';
+    el('btn-clear-current').style.display = 'none';
+    setStatus('海流レイヤーを削除しました');
+}
+
+function onMaskToggle() {
+    if (currentAnimator) {
+        const maskOn = el('chk-current-mask').checked;
+        currentAnimator.updateMask(overlaps.map(ov => ov.poly), maskOn);
+    }
+}
+
 // Cursor coordinates display
 map.on('mousemove', function(e) {
     const lat = e.latlng.lat;
@@ -1662,6 +1955,14 @@ map.on('mousemove', function(e) {
 /* ============================================================
    Init
    ============================================================ */
+
+// 粒子速度スライダーイベント
+el('s-particle-speed').addEventListener('input', () => {
+    el('d-particle-speed').textContent =
+        parseFloat(el('s-particle-speed').value).toFixed(1) + '×';
+    if (currentAnimator) currentAnimator.setSpeed(parseFloat(el('s-particle-speed').value));
+});
+
 updateDisplays();
 
 </script>
