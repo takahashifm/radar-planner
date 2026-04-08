@@ -307,6 +307,31 @@
         .leaflet-container { background: #1a2a3a; }
         .leaflet-control-zoom a { background: #112240 !important; color: #64b5f6 !important; border-color: #1e3a5f !important; }
         .leaflet-control-scale-line { background: rgba(10,22,40,0.8) !important; border-color: #64b5f6 !important; color: #90a8c0 !important; }
+
+        /* Badge */
+        .badge {
+            display: inline-block;
+            background: #1565c0;
+            color: #a0c8ff;
+            font-size: 9px;
+            padding: 1px 6px;
+            border-radius: 8px;
+            font-weight: bold;
+            letter-spacing: 0.4px;
+            vertical-align: middle;
+        }
+
+        /* GFW gear select */
+        .gear-select {
+            width: 100%;
+            padding: 5px 8px;
+            background: #1e3a5f;
+            border: 1px solid #2a5080;
+            color: #e0e8f0;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+        .gear-select:focus { outline: none; border-color: #64b5f6; }
     </style>
 </head>
 <body>
@@ -529,6 +554,76 @@
                     <input type="checkbox" id="chk-focus" onchange="toggleFocusMode()">
                     重複域のみ表示（流速推定可能域を強調）
                 </label>
+            </div>
+        </div>
+
+        <!-- 海流アニメーション -->
+        <div class="sec">
+            <div class="sec-hdr">
+                海流アニメーション
+                <span id="current-badge" class="badge" style="display:none">稼働中</span>
+            </div>
+            <div class="sec-body">
+                <div class="info-box">OSCAR/earth.nullschool形式JSON（U・V成分）またはデモデータ。重複域のみに粒子を表示できます。</div>
+                <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#90a8c0;cursor:pointer;margin-bottom:7px">
+                    <input type="checkbox" id="chk-current-mask" checked onchange="onMaskToggle()">
+                    重複カバレッジ域のみ表示
+                </label>
+                <div class="field" style="margin-bottom:8px">
+                    <div class="field-lbl">
+                        <span>粒子速度</span>
+                        <span class="field-val" id="d-particle-speed">1.0×</span>
+                    </div>
+                    <input type="range" id="s-particle-speed" min="0.2" max="5" step="0.2" value="1">
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-secondary" onclick="loadCurrentFile()">JSON ロード</button>
+                    <button class="btn btn-secondary" onclick="loadDemoCurrent()">デモ流速</button>
+                </div>
+                <button class="btn btn-danger btn-full btn-sm" id="btn-clear-current"
+                        style="display:none;margin-top:5px" onclick="clearCurrentLayer()">海流レイヤー削除</button>
+            </div>
+        </div>
+
+        <!-- GFW漁船分布 -->
+        <div class="sec">
+            <div class="sec-hdr">
+                GFW 漁船分布
+                <span class="badge" id="gfw-count">0</span>
+            </div>
+            <div class="sec-body">
+                <div class="info-box">
+                    Global Fishing Watch API で巻き網（パースセーヌ）等の漁船分布を重ね合わせます。
+                    <a href="https://globalfishingwatch.org/our-apis/" target="_blank" style="color:#64b5f6">APIキー取得 ↗</a>
+                </div>
+                <div class="field">
+                    <div class="field-lbl"><span>APIキー（Bearer token）</span></div>
+                    <input type="text" id="gfw-apikey" placeholder="eyJhbGci..." style="font-size:10px">
+                </div>
+                <div class="field-row">
+                    <div class="field">
+                        <div class="field-lbl"><span>開始日</span></div>
+                        <input type="text" id="gfw-start" value="2024-01-01">
+                    </div>
+                    <div class="field">
+                        <div class="field-lbl"><span>終了日</span></div>
+                        <input type="text" id="gfw-end" value="2024-01-31">
+                    </div>
+                </div>
+                <div class="field">
+                    <div class="field-lbl"><span>ギアタイプ</span></div>
+                    <select id="gfw-gear" class="gear-select">
+                        <option value="purse_seines">巻き網（Purse Seine）</option>
+                        <option value="trawlers">トロール（Trawlers）</option>
+                        <option value="longliners">延縄（Longliners）</option>
+                        <option value="squid_jigger">イカ釣り（Squid Jigger）</option>
+                        <option value="">全ギアタイプ</option>
+                    </select>
+                </div>
+                <button class="btn btn-primary btn-full" onclick="fetchGFW()">漁船データ取得</button>
+                <button class="btn btn-danger btn-full btn-sm" id="btn-clear-gfw"
+                        style="display:none;margin-top:4px" onclick="clearGFW()">漁船レイヤー削除</button>
+                <div id="gfw-status" style="font-size:10px;color:#5070a0;margin-top:5px;line-height:1.5"></div>
             </div>
         </div>
 
@@ -1609,6 +1704,12 @@ function updateOverlaps() {
     setStatus(overlaps.length
         ? `重複域 ${overlaps.length}箇所を検出しました（流速推定可能域）`
         : '重複域なし');
+
+    // 海流アニメーターのマスクを更新
+    if (currentAnimator) {
+        const maskOn = el('chk-current-mask')?.checked ?? true;
+        currentAnimator.updateMask(overlaps.map(ov => ov.poly), maskOn);
+    }
 }
 
 function toggleOverlayVis() {
@@ -1700,6 +1801,386 @@ function mkBarbIcon(dirDeg) {
     </svg>`;
 
     return L.divIcon({ className: '', html: svg, iconSize: [32, 32], iconAnchor: [16, 16] });
+}
+
+/* ============================================================
+   Ocean Current Animation (custom canvas particle system)
+   ============================================================ */
+
+let currentAnimator = null;
+let currentData     = null;
+
+class CurrentAnimator {
+    constructor(map) {
+        this._map          = map;
+        this._canvas       = null;
+        this._ctx          = null;
+        this._particles    = [];
+        this._uGrid        = null;
+        this._vGrid        = null;
+        this._header       = null;
+        this._animId       = null;
+        this._overlapPolys = [];
+        this._maskEnabled  = true;
+    }
+
+    start(data, overlapPolys, maskEnabled) {
+        this.stop();
+        this._parseData(data);
+        this._overlapPolys = overlapPolys || [];
+        this._maskEnabled  = maskEnabled !== false;
+        this._initCanvas();
+        this._initParticles(2800);
+        this._loop();
+    }
+
+    _parseData(data) {
+        const arr = Array.isArray(data) ? data : [data];
+        const uC = arr.find(d => d.header && d.header.parameterNumber === 2);
+        const vC = arr.find(d => d.header && d.header.parameterNumber === 3);
+        if (!uC || !vC) throw new Error('U/Vコンポーネント(parameterNumber 2,3)が見つかりません');
+        this._header = uC.header;
+        this._uGrid  = uC.data;
+        this._vGrid  = vC.data;
+    }
+
+    _initCanvas() {
+        const c = document.createElement('canvas');
+        Object.assign(c.style, {
+            position: 'absolute', top: '0', left: '0',
+            width: '100%', height: '100%',
+            zIndex: '500', pointerEvents: 'none'
+        });
+        const sz = this._map.getSize();
+        c.width = sz.x; c.height = sz.y;
+        this._map.getContainer().appendChild(c);
+        this._canvas = c;
+        this._ctx    = c.getContext('2d');
+    }
+
+    _randParticle() {
+        const h = this._header;
+        return {
+            lng: h.lo1 + Math.random() * (h.lo2 - h.lo1),
+            lat: h.la2 + Math.random() * (h.la1 - h.la2),
+            age: Math.floor(Math.random() * 120)
+        };
+    }
+
+    _initParticles(n) {
+        this._particles = Array.from({ length: n }, () => this._randParticle());
+    }
+
+    _sampleUV(lat, lng) {
+        const h = this._header;
+        const ix = (lng - h.lo1) / h.dx;
+        const iy = (h.la1 - lat) / h.dy;
+        const x0 = Math.floor(ix), y0 = Math.floor(iy);
+        const x1 = x0 + 1,        y1 = y0 + 1;
+        if (x0 < 0 || y0 < 0 || x1 >= h.nx || y1 >= h.ny) return null;
+        const fx = ix - x0, fy = iy - y0;
+        const G  = (x, y) => y * h.nx + x;
+        const u  = this._uGrid[G(x0,y0)]*(1-fx)*(1-fy) + this._uGrid[G(x1,y0)]*fx*(1-fy)
+                 + this._uGrid[G(x0,y1)]*(1-fx)*fy     + this._uGrid[G(x1,y1)]*fx*fy;
+        const v  = this._vGrid[G(x0,y0)]*(1-fx)*(1-fy) + this._vGrid[G(x1,y0)]*fx*(1-fy)
+                 + this._vGrid[G(x0,y1)]*(1-fx)*fy     + this._vGrid[G(x1,y1)]*fx*fy;
+        return [u, v];
+    }
+
+    // Ray-casting point-in-polygon
+    _pip(lat, lng, leafPoly) {
+        let rings = leafPoly.getLatLngs();
+        if (rings.length && Array.isArray(rings[0])) rings = rings[0];
+        let inside = false;
+        for (let i = 0, j = rings.length - 1; i < rings.length; j = i++) {
+            const xi = rings[i].lng, yi = rings[i].lat;
+            const xj = rings[j].lng, yj = rings[j].lat;
+            if (((yi > lat) !== (yj > lat)) &&
+                (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi))
+                inside = !inside;
+        }
+        return inside;
+    }
+
+    _visible(lat, lng) {
+        if (!this._maskEnabled || this._overlapPolys.length === 0) return true;
+        return this._overlapPolys.some(p => this._pip(lat, lng, p));
+    }
+
+    _loop() {
+        if (!this._canvas) return;
+        this._animId = requestAnimationFrame(() => this._loop());
+
+        const map = this._map;
+        const sz  = map.getSize();
+        const c   = this._canvas;
+        if (c.width !== sz.x || c.height !== sz.y) { c.width = sz.x; c.height = sz.y; }
+
+        const ctx = this._ctx;
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.fillStyle = 'rgba(0,0,0,0.035)';
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.globalCompositeOperation = 'source-over';
+
+        const speed  = parseFloat(el('s-particle-speed')?.value || 1);
+        const scale  = 0.00035 * speed;
+        const maxAge = 130;
+
+        for (const p of this._particles) {
+            p.age++;
+            if (p.age > maxAge) {
+                const n = this._randParticle();
+                p.lat = n.lat; p.lng = n.lng; p.age = 0;
+                continue;
+            }
+            const uv = this._sampleUV(p.lat, p.lng);
+            if (!uv) { p.age = maxAge; continue; }
+            const [u, v] = uv;
+            const nLng = p.lng + u * scale;
+            const nLat = p.lat + v * scale;
+
+            if (this._visible(p.lat, p.lng)) {
+                const pt1 = map.latLngToContainerPoint([p.lat, p.lng]);
+                const pt2 = map.latLngToContainerPoint([nLat, nLng]);
+                const spd  = Math.sqrt(u*u + v*v);
+                const hue  = Math.max(0, 210 - spd * 80);   // blue→cyan→green→yellow
+                const alpha = Math.max(0.12, 0.72 * (1 - p.age / maxAge));
+                ctx.beginPath();
+                ctx.strokeStyle = `hsla(${hue},100%,65%,${alpha.toFixed(2)})`;
+                ctx.lineWidth = 1.4;
+                ctx.moveTo(pt1.x, pt1.y);
+                ctx.lineTo(pt2.x, pt2.y);
+                ctx.stroke();
+            }
+            p.lat = nLat; p.lng = nLng;
+        }
+    }
+
+    updateMask(overlapPolys, maskEnabled) {
+        this._overlapPolys = overlapPolys;
+        this._maskEnabled  = maskEnabled;
+    }
+
+    stop() {
+        if (this._animId) { cancelAnimationFrame(this._animId); this._animId = null; }
+        if (this._canvas) { this._canvas.remove(); this._canvas = null; }
+        this._ctx = null;
+    }
+}
+
+/* 現在の地図ビューをカバーするデモ流速データ（渦 ＋ 背景流）を生成 */
+function buildDemoCurrentData() {
+    const center = map.getCenter();
+    const bounds = map.getBounds();
+    const res = 0.05;  // ~5.5km
+    const lo1 = Math.floor(bounds.getWest()  / res) * res - res;
+    const lo2 = Math.ceil (bounds.getEast()  / res) * res + res;
+    const la1 = Math.ceil (bounds.getNorth() / res) * res + res;
+    const la2 = Math.floor(bounds.getSouth() / res) * res - res;
+    const nx  = Math.max(2, Math.round((lo2 - lo1) / res) + 1);
+    const ny  = Math.max(2, Math.round((la1 - la2) / res) + 1);
+
+    const uD = [], vD = [];
+    for (let iy = 0; iy < ny; iy++) {
+        const lat = la1 - iy * res;
+        for (let ix = 0; ix < nx; ix++) {
+            const lng = lo1 + ix * res;
+            const dx = lng - center.lng, dy = lat - center.lat;
+            const r  = Math.sqrt(dx*dx + dy*dy);
+            const s  = 0.6 * Math.exp(-r * 2.0);
+            uD.push(+(-dy * s + 0.08).toFixed(4));
+            vD.push(+( dx * s + 0.04).toFixed(4));
+        }
+    }
+    const hdr = { parameterCategory: 2, lo1, lo2, la1, la2, dx: res, dy: res, nx, ny };
+    return [
+        { header: { ...hdr, parameterNumber: 2, parameterUnit: 'm.s-1' }, data: uD },
+        { header: { ...hdr, parameterNumber: 3, parameterUnit: 'm.s-1' }, data: vD }
+    ];
+}
+
+function loadDemoCurrent() {
+    const data = buildDemoCurrentData();
+    applyCurrentLayer(data);
+    setStatus('デモ海流データ（渦＋背景流）を表示中');
+}
+
+function loadCurrentFile() {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = '.json';
+    inp.onchange = e => {
+        const f = e.target.files[0]; if (!f) return;
+        const r = new FileReader();
+        r.onload = ev => {
+            try {
+                applyCurrentLayer(JSON.parse(ev.target.result));
+                setStatus(`海流データ読み込み完了: ${f.name}`);
+            } catch(err) { alert('読み込みエラー: ' + err.message); }
+        };
+        r.readAsText(f);
+    };
+    inp.click();
+}
+
+function applyCurrentLayer(data) {
+    clearCurrentLayer();
+    currentData = data;
+    const maskOn      = el('chk-current-mask')?.checked ?? true;
+    const overlapPolys = maskOn ? overlaps.map(ov => ov.poly) : [];
+    currentAnimator = new CurrentAnimator(map);
+    currentAnimator.start(data, overlapPolys, maskOn);
+    el('btn-clear-current').style.display = 'block';
+    el('current-badge').style.display     = '';
+}
+
+function clearCurrentLayer() {
+    if (currentAnimator) { currentAnimator.stop(); currentAnimator = null; }
+    currentData = null;
+    el('btn-clear-current').style.display = 'none';
+    el('current-badge').style.display     = 'none';
+}
+
+function onMaskToggle() {
+    if (!currentAnimator) return;
+    const maskOn = el('chk-current-mask').checked;
+    currentAnimator.updateMask(overlaps.map(ov => ov.poly), maskOn);
+}
+
+el('s-particle-speed').addEventListener('input', () => {
+    el('d-particle-speed').textContent =
+        parseFloat(el('s-particle-speed').value).toFixed(1) + '×';
+});
+
+/* ============================================================
+   GFW Vessel Layer
+   ============================================================ */
+
+let gfwMarkers = [];
+
+const GFW_COLORS = {
+    purse_seines: '#ff6600',
+    trawlers:     '#cc44ff',
+    longliners:   '#00ccee',
+    squid_jigger: '#ffcc00',
+    default:      '#ffffff'
+};
+
+async function fetchGFW() {
+    const apiKey    = el('gfw-apikey').value.trim();
+    const startDate = el('gfw-start').value.trim();
+    const endDate   = el('gfw-end').value.trim();
+    const gearType  = el('gfw-gear').value;
+
+    if (!apiKey) {
+        alert('GFW APIキーを入力してください。\nhttps://globalfishingwatch.org/our-apis/ で無料取得できます。');
+        return;
+    }
+    if (!startDate || !endDate) { alert('開始日・終了日を入力してください'); return; }
+    if (!radars.length) { alert('レーダーを先に設置してください'); return; }
+
+    clearGFW();
+    el('gfw-status').textContent = '取得中...';
+    el('gfw-count').textContent  = '…';
+
+    // 検索エリア: 重複域があればその範囲、なければ全カバレッジ
+    const srcPolys = overlaps.length ? overlaps.map(o => o.poly) : radars.map(r => r.poly);
+    const bounds   = L.featureGroup(srcPolys).getBounds();
+
+    const geometry = {
+        type: 'Polygon',
+        coordinates: [[
+            [bounds.getWest(),  bounds.getSouth()],
+            [bounds.getEast(),  bounds.getSouth()],
+            [bounds.getEast(),  bounds.getNorth()],
+            [bounds.getWest(),  bounds.getNorth()],
+            [bounds.getWest(),  bounds.getSouth()]
+        ]]
+    };
+
+    try {
+        const res = await fetch(
+            'https://gateway.api.globalfishingwatch.org/v3/events',
+            {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type':  'application/json'
+                },
+                body: JSON.stringify({
+                    datasets:  ['public-global-fishing-events:v3.0'],
+                    types:     ['fishing'],
+                    startDate: startDate + 'T00:00:00.000Z',
+                    endDate:   endDate   + 'T23:59:59.999Z',
+                    geometry,
+                    limit: 9999
+                })
+            }
+        );
+
+        if (!res.ok) {
+            const txt = await res.text();
+            throw new Error(`HTTP ${res.status}: ${txt.slice(0, 250)}`);
+        }
+
+        const json   = await res.json();
+        const events = json.entries || json.results || [];
+
+        // クライアント側でギアタイプフィルタ
+        const filtered = gearType
+            ? events.filter(e => {
+                const gt = (e.vessel?.geartype || '').toLowerCase();
+                return gt === gearType || gt.replace(/ /g,'_') === gearType;
+            })
+            : events;
+
+        renderGFWEvents(filtered, gearType);
+
+    } catch(err) {
+        el('gfw-status').textContent = `エラー: ${err.message.slice(0, 150)}`;
+        el('gfw-count').textContent  = '!';
+        console.error('GFW fetch:', err);
+    }
+}
+
+function renderGFWEvents(events, gearType) {
+    const color = GFW_COLORS[gearType] || GFW_COLORS.default;
+
+    for (const evt of events) {
+        const pos = evt.position;
+        if (!pos || pos.lat == null) continue;
+
+        const popupHtml = `
+            <b style="color:#e0e8f0">${esc(evt.vessel?.name || '不明')}</b><br>
+            <span style="color:#90a8c0">
+            旗国: ${evt.vessel?.flag || '?'}<br>
+            ギア: ${evt.vessel?.geartype || '?'}<br>
+            開始: ${evt.start ? evt.start.slice(0,10) : '?'}<br>
+            終了: ${evt.end   ? evt.end.slice(0,10)   : '?'}
+            </span>`;
+
+        const marker = L.circleMarker([pos.lat, pos.lon], {
+            radius: 5, fillColor: color,
+            color: 'rgba(0,0,0,0.6)', weight: 0.8, fillOpacity: 0.78
+        }).bindPopup(popupHtml, { maxWidth: 220 }).addTo(map);
+
+        gfwMarkers.push(marker);
+    }
+
+    el('gfw-count').textContent      = gfwMarkers.length;
+    el('btn-clear-gfw').style.display = gfwMarkers.length ? 'block' : 'none';
+    const label = gearType || '全ギア';
+    el('gfw-status').textContent = gfwMarkers.length
+        ? `${gfwMarkers.length}件表示中（${label}）`
+        : 'データなし — 日付やエリアを変更してください';
+    setStatus(`GFW: ${gfwMarkers.length}件の漁業イベントを取得（${label}）`);
+}
+
+function clearGFW() {
+    for (const m of gfwMarkers) map.removeLayer(m);
+    gfwMarkers.length = 0;
+    el('gfw-count').textContent       = 0;
+    el('btn-clear-gfw').style.display = 'none';
+    el('gfw-status').textContent      = '';
 }
 
 /* ============================================================
